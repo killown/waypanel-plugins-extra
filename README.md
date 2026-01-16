@@ -6,26 +6,34 @@ A dedicated repository for extended functionality, community contributions, and 
 Why This Repository?
 --------------------
 
-Waypanel aims to remain lightweight and stable. To achieve this, the core repository only includes essential plugins required for a functional desktop environment. **Waypanel Plugins Extra** was created to:
+Waypanel aims to remain lightweight and stable. The core repository only includes essential plugins. This repo exists to:
 
-*   **Keep Core Clean:** Prevent the main project from becoming bloated with niche or highly specific plugins.
-*   **Community Contributions:** Provide a space where users can easily submit and share their own custom plugins.
-*   **Experimental Features:** Host plugins that are in development or use external dependencies not found in the core stack.
+*   **Keep Core Clean:** Avoid bloating the main project with niche plugins.
+*   **Community Space:** A place for users to submit and share their own creations.
+*   **Experimental Features:** Host plugins with external dependencies or development-stage code.
+
+Repository Structure
+--------------------
+
+### waypanel-plugins-extra/
+    ├── extra/          # Official extra plugins maintained by the project
+    └── community/      # User-submitted plugins and community contributions
 
 Plugin Architecture
 -------------------
 
-All plugins here follow the standard `BasePlugin` architecture. Remember the strict rule:
+All plugins must follow the `BasePlugin` architecture. Note the strict rule:
 
-*   **No Top-Level Imports:** All library and module imports must be handled inside `get_plugin_class()` to ensure the panel remains fast and responsive via lazy loading.
+*   **No Top-Level Imports:** All library and module imports must be deferred inside `get_plugin_class()` to allow for lazy loading.
 
 How to Contribute
 -----------------
 
-Got a plugin you want to share? We welcome all submissions!
+Got a plugin to share? Follow these steps to submit your work:
 
 1.  Fork this repository.
-2.  Ensure your plugin follows the metadata and class factory structure.
-3.  Submit a Pull Request.
+2.  Create a folder for your plugin inside the **`community/`** directory.
+3.  Ensure your code follows the metadata and class factory structure.
+4.  Submit a **Pull Request (PR)** targeting the `community/` folder.
 
-Refer to the [Official Wiki](https://github.com/killown/waypanel/wiki/Building-plugins) for detailed building instructions.
+Refer to the [Official Wiki](https://github.com/killown/waypanel/wiki/Building-plugins) for building instructions.
