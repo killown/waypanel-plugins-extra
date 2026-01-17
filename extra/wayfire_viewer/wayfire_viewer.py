@@ -73,14 +73,39 @@ def get_plugin_class():
         def _on_msg(self, _, msg):
             try:
                 data = json.loads(msg.to_json(0))
-                section = ""
-                key = ""
-                final_val = None
+                msg_type = data.get("msg_type")
 
-                if data.get("msg_type") == "toggle_plugin":
-                    plist = self.ipc.get_option_value("core/plugins")["value"]
-                    plist = plist.split() if isinstance(plist, str) else list(plist)
+                if msg_type == "section_reset":
+                    section = data.get("plugin")
+                    updates = data.get("updates", {})
+                    # Process batch updates
+                    for path, val in updates.items():
+                        # Simple type inference for batch reset
+                        if val.lower() in ["true", "false"]:
+                            p_val = val.lower() == "true"
+                        elif val.replace(".", "", 1).isdigit():
+                            p_val = float(val) if "." in val else int(val)
+                        else:
+                            p_val = val
+
+                        self.ipc.set_option_values({path: p_val})
+                        key = path.split("/")[-1]
+                        self._persist_to_toml(section, key, p_val)
+                    return
+
+                if msg_type == "toggle_plugin":
+                    plist_reply = self.ipc.get_option_value("core/plugins")
+                    if not plist_reply:
+                        return
+
+                    plist_raw = plist_reply.get("value", "")
+                    plist = (
+                        plist_raw.split()
+                        if isinstance(plist_raw, str)
+                        else list(plist_raw)
+                    )
                     name, state = data["plugin"], data["state"]
+
                     if state and name not in plist:
                         plist.append(name)
                     elif not state and name in plist:
@@ -88,23 +113,24 @@ def get_plugin_class():
 
                     new_val = " ".join(plist)
                     self.ipc.set_option_values({"core/plugins": new_val})
-
-                    section, key, final_val = "core", "plugins", new_val
+                    self._persist_to_toml("core", "plugins", new_val)
                 else:
                     path, val, vtype = data["path"], data["value"], data["type"]
+
                     if vtype == "bool":
-                        val = bool(val)
+                        val = str(val).lower() == "true"
                     elif vtype == "number":
                         val = float(val) if "." in str(val) else int(val)
+                    elif vtype == "list" and isinstance(val, str):
+                        try:
+                            val = json.loads(val.replace("'", '"'))
+                        except:
+                            pass
 
                     self.ipc.set_option_values({path: val})
-
                     if "/" in path:
                         section, key = path.split("/", 1)
-                        final_val = val
-
-                if section and key:
-                    self._persist_to_toml(section, key, final_val)
+                        self._persist_to_toml(section, key, val)
 
             except Exception as e:
                 self.logger.error(f"Sync error: {e}")
@@ -112,7 +138,6 @@ def get_plugin_class():
         def _persist_to_toml(self, section, key, value):
             try:
                 os.makedirs(os.path.dirname(WAYFIRE_TOML_PATH), exist_ok=True)
-
                 config = {}
                 if os.path.exists(WAYFIRE_TOML_PATH):
                     with open(WAYFIRE_TOML_PATH, "r") as f:
@@ -120,7 +145,6 @@ def get_plugin_class():
 
                 if section not in config:
                     config[section] = {}
-
                 config[section][key] = value
 
                 with open(WAYFIRE_TOML_PATH, "w") as f:
