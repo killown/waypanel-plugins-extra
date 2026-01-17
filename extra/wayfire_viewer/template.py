@@ -208,8 +208,14 @@ def get_html(options_data, active_plugins_raw, icon_resolver):
     html += '<div class="header"><input class="search" placeholder="Search config..." oninput="doSearch(this.value)"></div>'
     html += '<div class="container">'
 
+    excluded = {"window-rules", "command", "autostart"}
+
     for plugin, opts in sorted(options_data.items()):
-        if not isinstance(opts, dict) or (not opts and plugin != "core"):
+        if (
+            plugin in excluded
+            or not isinstance(opts, dict)
+            or (not opts and plugin != "core")
+        ):
             continue
         html += f'<div class="block" data-name="{plugin}">'
         html += f'<div class="p-head"><div class="p-info">{icon_resolver(plugin)}<span>{plugin}</span></div>'
