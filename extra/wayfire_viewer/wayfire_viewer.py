@@ -15,9 +15,13 @@ def get_plugin_metadata(panel):
 def get_plugin_class():
     """Main execution class."""
     import json
+    import os
+    import toml
     from src.plugins.core._base import BasePlugin
     from .icons import get_svg
     from .template import get_html
+
+    WAYFIRE_TOML_PATH = os.path.expanduser("~/.config/waypanel/wayfire/wayfire.toml")
 
     class WayfireConfigViewerPlugin(BasePlugin):
         def __init__(self, panel_instance):
@@ -41,25 +45,25 @@ def get_plugin_class():
 
             gi.require_version("WebKit", "6.0")
             from gi.repository import Gtk, WebKit
-            from wayfire import WayfireSocket
 
-            self.window = Gtk.Window(
-                title="Wayfire Inspector", default_width=1000, default_height=800
+            self.window = Gtk.Window(title="Wayfire Configuration")
+            self.window.set_default_size(800, 600)
+
+            view = WebKit.WebView()
+            self.window.set_child(view)
+
+            view.get_settings().set_enable_developer_extras(True)
+            user_content_manager = view.get_user_content_manager()
+            user_content_manager.register_script_message_handler("wayfire")
+            user_content_manager.connect(
+                "script-message-received::wayfire", self._on_msg
             )
-            manager = WebKit.UserContentManager()
-            manager.register_script_message_handler("wayfire", None)
-            manager.connect("script-message-received::wayfire", self._on_msg)
-
-            view = WebKit.WebView(user_content_manager=manager)
-            scroll = Gtk.ScrolledWindow(child=view)
-            self.window.set_child(scroll)
 
             try:
-                sock = WayfireSocket()
-                raw_data = sock.list_config_options()
-                enabled = sock.get_option_value("core/plugins")["value"]
+                options = self.ipc.list_config_options()
+                enabled = self.ipc.get_option_value("core/plugins")["value"]
                 view.load_html(
-                    get_html(raw_data.get("options", {}), enabled, get_svg), None
+                    get_html(options.get("options", {}), enabled, get_svg), None
                 )
             except Exception as e:
                 view.load_html(f"Error: {e}", None)
@@ -67,29 +71,62 @@ def get_plugin_class():
             self.window.present()
 
         def _on_msg(self, _, msg):
-            from wayfire import WayfireSocket
-
             try:
                 data = json.loads(msg.to_json(0))
-                sock = WayfireSocket()
+                section = ""
+                key = ""
+                final_val = None
+
                 if data.get("msg_type") == "toggle_plugin":
-                    plist = sock.get_option_value("core/plugins")["value"]
+                    plist = self.ipc.get_option_value("core/plugins")["value"]
                     plist = plist.split() if isinstance(plist, str) else list(plist)
                     name, state = data["plugin"], data["state"]
                     if state and name not in plist:
                         plist.append(name)
                     elif not state and name in plist:
                         plist.remove(name)
-                    sock.set_option_values({"core/plugins": " ".join(plist)})
+
+                    new_val = " ".join(plist)
+                    self.ipc.set_option_values({"core/plugins": new_val})
+
+                    section, key, final_val = "core", "plugins", new_val
                 else:
                     path, val, vtype = data["path"], data["value"], data["type"]
                     if vtype == "bool":
                         val = bool(val)
                     elif vtype == "number":
                         val = float(val) if "." in str(val) else int(val)
-                    sock.set_option_values({path: val})
+
+                    self.ipc.set_option_values({path: val})
+
+                    if "/" in path:
+                        section, key = path.split("/", 1)
+                        final_val = val
+
+                if section and key:
+                    self._persist_to_toml(section, key, final_val)
+
             except Exception as e:
                 self.logger.error(f"Sync error: {e}")
+
+        def _persist_to_toml(self, section, key, value):
+            try:
+                os.makedirs(os.path.dirname(WAYFIRE_TOML_PATH), exist_ok=True)
+
+                config = {}
+                if os.path.exists(WAYFIRE_TOML_PATH):
+                    with open(WAYFIRE_TOML_PATH, "r") as f:
+                        config = toml.load(f)
+
+                if section not in config:
+                    config[section] = {}
+
+                config[section][key] = value
+
+                with open(WAYFIRE_TOML_PATH, "w") as f:
+                    toml.dump(config, f)
+            except Exception as e:
+                self.logger.error(f"Failed to save to TOML: {e}")
 
         def on_stop(self):
             if self.window:
