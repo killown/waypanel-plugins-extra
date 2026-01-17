@@ -5,10 +5,11 @@ def get_plugin_metadata(panel):
     return {
         "id": id,
         "name": "Wayfire Config Viewer",
-        "version": "2.1.0",
+        "version": "2.4.0",
         "enabled": True,
         "container": container,
         "index": 10,
+        "deps": ["app_launcher"],
     }
 
 
@@ -28,12 +29,25 @@ def get_plugin_class():
         def __init__(self, panel_instance):
             super().__init__(panel_instance)
             self.window = None
+            self.view = None
 
         def on_start(self):
             self.button = self.gtk.Button(icon_name="preferences-system-symbolic")
             self.button.connect("clicked", self.on_click)
             self.add_cursor_effect(self.button)
-            self.main_widget = (self.button, "append")
+            self.plugins["app_launcher"].system_button_config["Wayfire Settings"] = (
+                {
+                    "icons": self.get_plugin_setting(
+                        ["buttons", "icons", "settings"],
+                        [
+                            "settings-configure-symbolic",
+                            "systemsettings-symbolic",
+                            "settings",
+                        ],
+                    ),
+                },
+            )
+            # self.main_widget = (self.button, "append")
 
         def on_click(self, _):
             if self.window and self.window.get_visible():
@@ -50,11 +64,11 @@ def get_plugin_class():
             self.window = Gtk.Window(title="Wayfire Configuration")
             self.window.set_default_size(800, 600)
 
-            view = WebKit.WebView()
-            self.window.set_child(view)
+            self.view = WebKit.WebView()
+            self.window.set_child(self.view)
 
-            view.get_settings().set_enable_developer_extras(True)
-            user_content_manager = view.get_user_content_manager()
+            self.view.get_settings().set_enable_developer_extras(True)
+            user_content_manager = self.view.get_user_content_manager()
             user_content_manager.register_script_message_handler("wayfire")
             user_content_manager.connect(
                 "script-message-received::wayfire", self._on_msg
@@ -70,12 +84,12 @@ def get_plugin_class():
                     with open(WAYFIRE_TOML_PATH, "r") as f:
                         raw_config = toml.load(f)
 
-                view.load_html(
+                self.view.load_html(
                     get_html(options.get("options", {}), enabled, get_svg, raw_config),
                     None,
                 )
             except Exception as e:
-                view.load_html(f"Error: {e}", None)
+                self.view.load_html(f"Error: {e}", None)
 
             self.window.present()
 
@@ -84,18 +98,19 @@ def get_plugin_class():
                 data = json.loads(msg.to_json(0))
                 msg_type = data.get("msg_type")
 
+                if msg_type == "pick_file":
+                    self._open_file_chooser(data["target_id"])
+                    return
+
                 if msg_type == "manual_update":
                     section, key, val = data["section"], data["key"], data["value"]
-                    if isinstance(val, str):
-                        stripped = val.strip()
-                        if (stripped.startswith("[") and stripped.endswith("]")) or (
-                            stripped.startswith("{") and stripped.endswith("}")
-                        ):
-                            try:
-                                val = ast.literal_eval(stripped)
-                            except:
-                                pass
+                    val = self._parse_val(val)
                     self._manual_save(section, key, val)
+                    return
+
+                if msg_type == "manual_delete":
+                    section, key = data["section"], data["key"]
+                    self._manual_delete(section, key)
                     return
 
                 if msg_type == "section_reset":
@@ -129,7 +144,6 @@ def get_plugin_class():
                     self.panel.config_handler.save_config()
                     return
 
-                # Default IPC update path
                 path, val, vtype = data["path"], data["value"], data["type"]
                 parsed_val = self._parse_val(val, vtype)
                 self.ipc.set_option_values({path: parsed_val})
@@ -137,6 +151,32 @@ def get_plugin_class():
 
             except Exception as e:
                 self.logger.error(f"Sync error: {e}")
+
+        def _open_file_chooser(self, target_id):
+            from gi.repository import Gtk
+
+            dialog = Gtk.FileChooserNative(
+                title="Select File",
+                transient_for=self.window,
+                action=Gtk.FileChooserAction.OPEN,
+            )
+
+            def on_response(dialog, response_id):
+                if response_id == Gtk.ResponseType.ACCEPT:
+                    file_path = dialog.get_file().get_path()
+                    # Execute JS to update the specific textarea/input
+                    self.view.evaluate_javascript(
+                        f"updateFilePath('{target_id}', '{file_path}')",
+                        -1,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                dialog.destroy()
+
+            dialog.connect("response", on_response)
+            dialog.show()
 
         def _parse_val(self, val, vtype=None):
             if vtype == "bool" or str(val).lower() in ["true", "false"]:
@@ -169,6 +209,19 @@ def get_plugin_class():
                     toml.dump(config, f)
             except Exception as e:
                 self.logger.error(f"Manual save failed: {e}")
+
+        def _manual_delete(self, section, key):
+            try:
+                if not os.path.exists(WAYFIRE_TOML_PATH):
+                    return
+                with open(WAYFIRE_TOML_PATH, "r") as f:
+                    config = toml.load(f)
+                if section in config and key in config[section]:
+                    del config[section][key]
+                    with open(WAYFIRE_TOML_PATH, "w") as f:
+                        toml.dump(config, f)
+            except Exception as e:
+                self.logger.error(f"Manual delete failed: {e}")
 
         def on_stop(self):
             if self.window:

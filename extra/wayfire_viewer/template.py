@@ -44,6 +44,7 @@ def get_html(options_data, active_plugins_raw, icon_resolver, raw_config=None):
         --border: lch(20% 4 260);
         --input: lch(4% 0 0);
         --suggest-bg: lch(15% 5 260);
+        --danger: lch(50% 50 20);
     }
     body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding-bottom: 50px; }
     .header { position: sticky; top: 0; background: var(--bg); padding: 25px; z-index: 10; border-bottom: 1px solid var(--border); }
@@ -61,6 +62,7 @@ def get_html(options_data, active_plugins_raw, icon_resolver, raw_config=None):
         width: 100%; padding: 8px; background: var(--input); border: 1px solid var(--border); 
         color: white; border-radius: 4px; font-family: inherit; box-sizing: border-box; 
     }
+    textarea:placeholder-shown, input:placeholder-shown { border: 1px dashed var(--danger); }
     textarea.manual-edit { height: 100px; resize: vertical; font-family: monospace; font-size: 0.8rem; }
     .suggestions {
         position: absolute; top: 100%; left: 0; right: 0; background: var(--suggest-bg);
@@ -69,8 +71,9 @@ def get_html(options_data, active_plugins_raw, icon_resolver, raw_config=None):
     }
     .suggestion-item { padding: 8px 12px; cursor: pointer; font-family: monospace; font-size: 0.85rem; border-bottom: 1px solid var(--border); color: #ccc; }
     .suggestion-item:hover, .suggestion-item.active { background: var(--accent); color: white; }
-    .reset-btn { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 1.1rem; padding: 5px; opacity: 0.6; }
-    .reset-btn:hover { opacity: 1; }
+    .reset-btn, .add-btn, .del-btn, .browse-btn { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 1.1rem; padding: 5px; opacity: 0.6; }
+    .del-btn { color: var(--danger); }
+    .reset-btn:hover, .add-btn:hover, .del-btn:hover, .browse-btn:hover { opacity: 1; }
     .switch { position: relative; width: 36px; height: 18px; flex-shrink: 0; }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--border); border-radius: 18px; transition: .2s; }
@@ -98,6 +101,44 @@ def get_html(options_data, active_plugins_raw, icon_resolver, raw_config=None):
             window.webkit.messageHandlers.wayfire.postMessage({ msg_type: 'manual_update', section, key, value: val });
             delete timers[path];
         }, 500);
+    }
+
+    function updateFilePath(targetId, path) {
+        const el = document.getElementById(targetId);
+        if (!el) return;
+        el.value = path;
+        el.dispatchEvent(new Event('input'));
+    }
+
+    function pickFile(targetId) {
+        window.webkit.messageHandlers.wayfire.postMessage({ msg_type: 'pick_file', target_id: targetId });
+    }
+
+    function addManualRow(section) {
+        const key = prompt("Enter key name:");
+        if (!key) return;
+        const block = document.querySelector(`.block[data-name="${section}"]`);
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.dataset.key = key;
+        const targetId = `input_${section}_${key}`.replace(/[^a-zA-Z0-9]/g, '_');
+        row.innerHTML = `
+            <div class="label">${key}</div>
+            <div class="widget">
+                <div class="input-wrapper">
+                    <textarea id="${targetId}" class="manual-edit" placeholder="Value required..." oninput="syncManual('${section}', '${key}', this.value)"></textarea>
+                    <button class="browse-btn" onclick="pickFile('${targetId}')">📂</button>
+                    <button class="del-btn" onclick="deleteManualRow('${section}', '${key}', this.closest('.row'))">🗑</button>
+                </div>
+            </div>
+        `;
+        block.appendChild(row);
+    }
+
+    function deleteManualRow(section, key, element) {
+        if (!confirm(`Delete ${key}?`)) return;
+        window.webkit.messageHandlers.wayfire.postMessage({ msg_type: 'manual_delete', section, key });
+        element.remove();
     }
 
     function resetSection(pluginName) {
@@ -220,7 +261,9 @@ def get_html(options_data, active_plugins_raw, icon_resolver, raw_config=None):
         html += f'<div class="p-head"><div class="p-info">{icon_resolver(plugin)}<span>{plugin}</span></div>'
         html += '<div class="p-actions">'
 
-        if not is_manual:
+        if is_manual:
+            html += f'<button class="add-btn" onclick="addManualRow(\'{plugin}\')" title="Add New Row">+</button>'
+        else:
             html += f'<button class="reset-btn" onclick="resetSection(\'{plugin}\')" title="Reset Section Defaults">↺ Section</button>'
             if plugin in toggleable_plugins:
                 is_on = "checked" if plugin in active_set else ""
@@ -231,12 +274,26 @@ def get_html(options_data, active_plugins_raw, icon_resolver, raw_config=None):
         if is_manual:
             section_data = raw_config.get(plugin, {})
             for key, val in section_data.items():
-                val_str = str(val)
+                low_key, target_id = (
+                    key.lower(),
+                    f"input_{plugin}_{key}".replace("-", "_"),
+                )
+                if isinstance(val, bool):
+                    chk = "checked" if val else ""
+                    widget = f'<label class="switch"><input type="checkbox" {chk} onchange="syncManual(\'{plugin}\', \'{key}\', this.checked)"><span class="slider"></span></label>'
+                elif any(x in low_key for x in ["path", "file", "dir", "image"]):
+                    widget = f'<div class="input-wrapper"><textarea id="{target_id}" class="manual-edit" placeholder="Value required..." oninput="syncManual(\'{plugin}\', \'{key}\', this.value)">{val}</textarea><button class="browse-btn" onclick="pickFile(\'{target_id}\')">📂</button></div>'
+                else:
+                    widget = f'<textarea class="manual-edit" placeholder="Value required..." oninput="syncManual(\'{plugin}\', \'{key}\', this.value)">{val}</textarea>'
+
                 html += f'''
-                <div class="row" data-path="{plugin}/{key}">
+                <div class="row" data-key="{key}">
                     <div class="label">{key}</div>
                     <div class="widget">
-                        <textarea class="manual-edit" oninput="syncManual('{plugin}', '{key}', this.value)">{val_str}</textarea>
+                        <div class="input-wrapper">
+                            {widget}
+                            <button class="del-btn" onclick="deleteManualRow('{plugin}', '{key}', this.closest('.row'))">🗑</button>
+                        </div>
                     </div>
                 </div>'''
         else:
@@ -248,13 +305,20 @@ def get_html(options_data, active_plugins_raw, icon_resolver, raw_config=None):
                     meta.get("value", ""),
                     meta.get("default", ""),
                 )
+                low_key = key.lower()
                 if isinstance(val, dict):
                     val = val.get("value", "")
                 if isinstance(default, dict):
                     default = default.get("value", "")
                 vtype, js_default = "string", str(default).replace("'", "\\'")
 
-                if "default" in meta and isinstance(meta.get("value"), str):
+                if isinstance(val, bool) or str(val).lower() in ["true", "false"]:
+                    vtype, chk = "bool", "checked" if str(val).lower() == "true" else ""
+                    widget = f'<label class="switch"><input type="checkbox" {chk} onchange="sync(\'{path}\', this.checked, \'bool\')"><span class="slider"></span></label>'
+                elif any(x in low_key for x in ["path", "file", "dir"]):
+                    target_id = path.replace("/", "_")
+                    widget = f'<div class="input-wrapper"><input type="text" id="{target_id}" value="{val}" oninput="sync(\'{path}\', this.value, \'string\')"><button class="browse-btn" onclick="pickFile(\'{target_id}\')">📂</button></div>'
+                elif "default" in meta and isinstance(meta.get("value"), str):
                     widget = f'<input type="text" class="search-activator" value="{val}" oninput="handleSuggest(this, \'{path}\', event); debouncedSync(\'{path}\', this.value, \'string\')" onkeydown="handleSuggest(this, \'{path}\', event)" autocomplete="off"><div class="suggestions"></div>'
                 elif isinstance(val, list):
                     vtype, widget = (
@@ -266,9 +330,6 @@ def get_html(options_data, active_plugins_raw, icon_resolver, raw_config=None):
                         "color",
                         f"<input type=\"color\" value=\"{val[:7]}\" onchange=\"sync('{path}', this.value+'FF', 'color')\">",
                     )
-                elif str(val).lower() in ["true", "false"]:
-                    vtype, chk = "bool", "checked" if str(val).lower() == "true" else ""
-                    widget = f"<input type=\"checkbox\" {chk} onchange=\"sync('{path}', this.checked, 'bool')\">"
                 elif isinstance(val, (int, float)) or (
                     isinstance(val, str)
                     and val.replace(".", "", 1).replace("-", "", 1).isdigit()
