@@ -2,11 +2,12 @@ import re
 import os
 
 
-def get_html(options_data, active_plugins_raw, icon_resolver):
+def get_html(options_data, active_plugins_raw, icon_resolver, raw_config=None):
     """Generates the full HTML5/CSS/JS string for the WebKit view."""
-
     if not isinstance(options_data, dict):
         options_data = {}
+    if raw_config is None:
+        raw_config = {}
 
     active_set = set(
         active_plugins_raw.split()
@@ -55,13 +56,12 @@ def get_html(options_data, active_plugins_raw, icon_resolver):
     .row { display: flex; align-items: flex-start; gap: 15px; padding: 12px 0; border-bottom: 1px solid lch(15% 1 260); }
     .label { flex: 1; font-family: monospace; font-size: 0.85rem; opacity: 0.7; padding-top: 8px; }
     .widget { width: 450px; display: flex; flex-direction: column; align-items: flex-end; position: relative; }
-    
     .input-wrapper { width: 100%; display: flex; gap: 8px; align-items: center; position: relative; }
     input[type="text"], input[type="number"], textarea { 
         width: 100%; padding: 8px; background: var(--input); border: 1px solid var(--border); 
         color: white; border-radius: 4px; font-family: inherit; box-sizing: border-box; 
     }
-    
+    textarea.manual-edit { height: 100px; resize: vertical; font-family: monospace; font-size: 0.8rem; }
     .suggestions {
         position: absolute; top: 100%; left: 0; right: 0; background: var(--suggest-bg);
         border: 1px solid var(--border); border-radius: 0 0 4px 4px; z-index: 100;
@@ -69,10 +69,8 @@ def get_html(options_data, active_plugins_raw, icon_resolver):
     }
     .suggestion-item { padding: 8px 12px; cursor: pointer; font-family: monospace; font-size: 0.85rem; border-bottom: 1px solid var(--border); color: #ccc; }
     .suggestion-item:hover, .suggestion-item.active { background: var(--accent); color: white; }
-
     .reset-btn { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 1.1rem; padding: 5px; opacity: 0.6; }
     .reset-btn:hover { opacity: 1; }
-
     .switch { position: relative; width: 36px; height: 18px; flex-shrink: 0; }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--border); border-radius: 18px; transition: .2s; }
@@ -83,10 +81,6 @@ def get_html(options_data, active_plugins_raw, icon_resolver):
     """
 
     js = """
-    const MODS = ["<alt>", "<ctrl>", "<shift>", "<super>"];
-    const KEYS = ["KEY_A", "KEY_B", "KEY_C", "KEY_D", "KEY_E", "KEY_F", "KEY_G", "KEY_H", "KEY_I", "KEY_J", "KEY_K", "KEY_L", "KEY_M", "KEY_N", "KEY_O", "KEY_P", "KEY_Q", "KEY_R", "KEY_S", "KEY_T", "KEY_U", "KEY_V", "KEY_W", "KEY_X", "KEY_Y", "KEY_Z", "KEY_ENTER", "KEY_ESC", "KEY_SPACE", "KEY_BACKSPACE", "KEY_TAB", "KEY_UP", "KEY_DOWN", "KEY_LEFT", "KEY_RIGHT", "KEY_F1", "KEY_F2", "KEY_F3", "KEY_F4", "KEY_F5", "KEY_F6", "KEY_F7", "KEY_F8", "KEY_F9", "KEY_F10", "KEY_F11", "KEY_F12", "KEY_KP0", "KEY_KP1", "KEY_KP2", "KEY_KP3", "KEY_KP4", "KEY_KP5", "KEY_KP6", "KEY_KP7", "KEY_KP8", "KEY_KP9", "BTN_LEFT", "BTN_RIGHT", "BTN_MIDDLE", "BTN_SIDE", "BTN_EXTRA"];
-
-    let activeIndex = -1;
     let timers = {};
 
     function debouncedSync(path, val, type, delay = 500) {
@@ -97,28 +91,30 @@ def get_html(options_data, active_plugins_raw, icon_resolver):
         }, delay);
     }
 
+    function syncManual(section, key, val) {
+        const path = section + '_' + key;
+        if (timers[path]) clearTimeout(timers[path]);
+        timers[path] = setTimeout(() => {
+            window.webkit.messageHandlers.wayfire.postMessage({ msg_type: 'manual_update', section, key, value: val });
+            delete timers[path];
+        }, 500);
+    }
+
     function resetSection(pluginName) {
         const block = document.querySelector(`.block[data-name="${pluginName}"]`);
         const rows = block.querySelectorAll('.row');
         const updates = {};
-        
         rows.forEach(row => {
             const path = row.dataset.path;
             const defVal = row.dataset.default;
             const input = row.querySelector('input, textarea');
-            
             if (input) {
                 if (input.type === 'checkbox') input.checked = (defVal === 'true');
                 else input.value = defVal;
             }
             updates[path] = defVal;
         });
-
-        window.webkit.messageHandlers.wayfire.postMessage({ 
-            msg_type: 'section_reset', 
-            plugin: pluginName, 
-            updates: updates 
-        });
+        window.webkit.messageHandlers.wayfire.postMessage({ msg_type: 'section_reset', plugin: pluginName, updates: updates });
     }
 
     function resetToDefault(path, defaultValue, type) {
@@ -133,7 +129,7 @@ def get_html(options_data, active_plugins_raw, icon_resolver):
     }
 
     function sync(path, val, type) {
-        if (typeof val === 'string' && val.trim() === '') {
+        if (typeof val === 'string' && val.trim() === '' && type !== 'string') {
             const row = document.querySelector(`[data-path="${path}"]`);
             if (row) resetToDefault(path, row.dataset.default, type);
             return;
@@ -154,20 +150,20 @@ def get_html(options_data, active_plugins_raw, icon_resolver):
         const val = input.value;
         const words = val.split(/\\s+/);
         const lastWord = words[words.length - 1].toLowerCase();
-
+        const MODS = ["<alt>", "<ctrl>", "<shift>", "<super>"];
+        const KEYS = ["KEY_A", "KEY_B", "KEY_ENTER", "KEY_ESC", "KEY_SPACE", "BTN_LEFT", "BTN_RIGHT"];
+        
         if (e && (e.key === "Tab" || e.key === "Enter") && suggestDiv.style.display === 'block') {
             e.preventDefault();
-            const idx = activeIndex === -1 ? 0 : activeIndex;
-            if (suggestDiv.children[idx]) suggestDiv.children[idx].onmousedown(e);
+            const item = suggestDiv.querySelector('.active') || suggestDiv.firstChild;
+            if (item) item.onmousedown(e);
             return;
         }
-
         const matches = [...MODS, ...KEYS].filter(s => s.toLowerCase().includes(lastWord) && !words.includes(s));
         if (matches.length === 0 || (val.endsWith(' ') && !lastWord)) {
-            suggestDiv.style.display = 'none'; activeIndex = -1; return;
+            suggestDiv.style.display = 'none'; return;
         }
-
-        suggestDiv.innerHTML = ''; suggestDiv.style.display = 'block'; activeIndex = 0;
+        suggestDiv.innerHTML = ''; suggestDiv.style.display = 'block';
         matches.forEach((m, idx) => {
             const item = document.createElement('div');
             item.className = 'suggestion-item' + (idx === 0 ? ' active' : '');
@@ -191,7 +187,7 @@ def get_html(options_data, active_plugins_raw, icon_resolver):
             let bMatch = name.includes(q);
             let hasVisibleRow = false;
             b.querySelectorAll('.row').forEach(r => {
-                const k = r.dataset.key.toLowerCase();
+                const k = r.dataset.key ? r.dataset.key.toLowerCase() : r.dataset.path.toLowerCase();
                 if (bMatch || k.includes(q)) {
                     r.classList.remove('hidden');
                     hasVisibleRow = true;
@@ -208,61 +204,84 @@ def get_html(options_data, active_plugins_raw, icon_resolver):
     html += '<div class="header"><input class="search" placeholder="Search config..." oninput="doSearch(this.value)"></div>'
     html += '<div class="container">'
 
-    excluded = {"window-rules", "command", "autostart"}
+    manual_sections = {"window-rules", "command", "autostart"}
+    all_sections = sorted(set(options_data.keys()) | manual_sections)
 
-    for plugin, opts in sorted(options_data.items()):
-        if (
-            plugin in excluded
-            or not isinstance(opts, dict)
-            or (not opts and plugin != "core")
+    for plugin in all_sections:
+        is_manual = plugin in manual_sections
+        opts = options_data.get(plugin, {})
+
+        if not is_manual and (
+            not isinstance(opts, dict) or (not opts and plugin != "core")
         ):
             continue
+
         html += f'<div class="block" data-name="{plugin}">'
         html += f'<div class="p-head"><div class="p-info">{icon_resolver(plugin)}<span>{plugin}</span></div>'
         html += '<div class="p-actions">'
-        html += f'<button class="reset-btn" onclick="resetSection(\'{plugin}\')" title="Reset Section Defaults">↺ Section</button>'
-        if plugin in toggleable_plugins:
-            is_on = "checked" if plugin in active_set else ""
-            html += f'<label class="switch"><input type="checkbox" {is_on} onchange="toggle(\'{plugin}\', this.checked)"><span class="slider"></span></label>'
+
+        if not is_manual:
+            html += f'<button class="reset-btn" onclick="resetSection(\'{plugin}\')" title="Reset Section Defaults">↺ Section</button>'
+            if plugin in toggleable_plugins:
+                is_on = "checked" if plugin in active_set else ""
+                html += f'<label class="switch"><input type="checkbox" {is_on} onchange="toggle(\'{plugin}\', this.checked)"><span class="slider"></span></label>'
+
         html += "</div></div>"
 
-        for key, meta in sorted(opts.items()):
-            if not isinstance(meta, dict):
-                continue
-            path = f"{plugin}/{key}"
-            val = meta.get("value", "")
-            default = meta.get("default", "")
+        if is_manual:
+            section_data = raw_config.get(plugin, {})
+            for key, val in section_data.items():
+                val_str = str(val)
+                html += f'''
+                <div class="row" data-path="{plugin}/{key}">
+                    <div class="label">{key}</div>
+                    <div class="widget">
+                        <textarea class="manual-edit" oninput="syncManual('{plugin}', '{key}', this.value)">{val_str}</textarea>
+                    </div>
+                </div>'''
+        else:
+            for key, meta in sorted(opts.items()):
+                if not isinstance(meta, dict):
+                    continue
+                path, val, default = (
+                    f"{plugin}/{key}",
+                    meta.get("value", ""),
+                    meta.get("default", ""),
+                )
+                if isinstance(val, dict):
+                    val = val.get("value", "")
+                if isinstance(default, dict):
+                    default = default.get("value", "")
+                vtype, js_default = "string", str(default).replace("'", "\\'")
 
-            if isinstance(val, dict):
-                val = val.get("value", "")
-            if isinstance(default, dict):
-                default = default.get("value", "")
+                if "default" in meta and isinstance(meta.get("value"), str):
+                    widget = f'<input type="text" class="search-activator" value="{val}" oninput="handleSuggest(this, \'{path}\', event); debouncedSync(\'{path}\', this.value, \'string\')" onkeydown="handleSuggest(this, \'{path}\', event)" autocomplete="off"><div class="suggestions"></div>'
+                elif isinstance(val, list):
+                    vtype, widget = (
+                        "list",
+                        f"<textarea oninput=\"debouncedSync('{path}', this.value, 'list')\">{str(val)}</textarea>",
+                    )
+                elif isinstance(val, str) and re.match(r"^#[0-9A-Fa-f]{8}$", val):
+                    vtype, widget = (
+                        "color",
+                        f"<input type=\"color\" value=\"{val[:7]}\" onchange=\"sync('{path}', this.value+'FF', 'color')\">",
+                    )
+                elif str(val).lower() in ["true", "false"]:
+                    vtype, chk = "bool", "checked" if str(val).lower() == "true" else ""
+                    widget = f"<input type=\"checkbox\" {chk} onchange=\"sync('{path}', this.checked, 'bool')\">"
+                elif isinstance(val, (int, float)) or (
+                    isinstance(val, str)
+                    and val.replace(".", "", 1).replace("-", "", 1).isdigit()
+                ):
+                    vtype, widget = (
+                        "number",
+                        f'<input type="number" step="any" value="{val}" oninput="debouncedSync(\'{path}\', this.value, \'number\')">',
+                    )
+                else:
+                    widget = f'<input type="text" value="{val}" oninput="debouncedSync(\'{path}\', this.value, \'string\')">'
 
-            vtype = "string"
-            js_default = str(default).replace("'", "\\'")
+                html += f'<div class="row" data-path="{path}" data-default="{js_default}" data-key="{key}"><div class="label">{key}</div><div class="widget"><div class="input-wrapper">{widget}<button class="reset-btn" onclick="resetToDefault(\'{path}\', \'{js_default}\', \'{vtype}\')">↺</button></div></div></div>'
 
-            if "default" in meta and isinstance(meta.get("value"), str):  # Activator
-                widget = f'<input type="text" class="search-activator" value="{val}" oninput="handleSuggest(this, \'{path}\', event); debouncedSync(\'{path}\', this.value, \'string\')" onkeydown="handleSuggest(this, \'{path}\', event)" autocomplete="off"><div class="suggestions"></div>'
-            elif isinstance(val, list):
-                vtype = "list"
-                widget = f"<textarea oninput=\"debouncedSync('{path}', this.value, 'list')\">{str(val)}</textarea>"
-            elif isinstance(val, str) and re.match(r"^#[0-9A-Fa-f]{8}$", val):
-                vtype = "color"
-                widget = f"<input type=\"color\" value=\"{val[:7]}\" onchange=\"sync('{path}', this.value+'FF', 'color')\">"
-            elif str(val).lower() in ["true", "false"]:
-                vtype = "bool"
-                chk = "checked" if str(val).lower() == "true" else ""
-                widget = f"<input type=\"checkbox\" {chk} onchange=\"sync('{path}', this.checked, 'bool')\">"
-            elif isinstance(val, (int, float)) or (
-                isinstance(val, str)
-                and val.replace(".", "", 1).replace("-", "", 1).isdigit()
-            ):
-                vtype = "number"
-                widget = f'<input type="number" step="any" value="{val}" oninput="debouncedSync(\'{path}\', this.value, \'number\')">'
-            else:
-                widget = f'<input type="text" value="{val}" oninput="debouncedSync(\'{path}\', this.value, \'string\')">'
-
-            html += f'<div class="row" data-path="{path}" data-default="{js_default}"><div class="label">{key}</div><div class="widget"><div class="input-wrapper">{widget}<button class="reset-btn" onclick="resetToDefault(\'{path}\', \'{js_default}\', \'{vtype}\')">↺</button></div></div></div>'
         html += "</div>"
 
     return html + "</div></body></html>"

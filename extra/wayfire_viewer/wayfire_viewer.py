@@ -5,7 +5,7 @@ def get_plugin_metadata(panel):
     return {
         "id": id,
         "name": "Wayfire Config Viewer",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "enabled": True,
         "container": container,
         "index": 10,
@@ -17,6 +17,7 @@ def get_plugin_class():
     import json
     import os
     import toml
+    import ast
     from src.plugins.core._base import BasePlugin
     from .icons import get_svg
     from .template import get_html
@@ -61,9 +62,17 @@ def get_plugin_class():
 
             try:
                 options = self.ipc.list_config_options()
-                enabled = self.ipc.get_option_value("core/plugins")["value"]
+                enabled_reply = self.ipc.get_option_value("core/plugins")
+                enabled = enabled_reply.get("value", "") if enabled_reply else ""
+
+                raw_config = {}
+                if os.path.exists(WAYFIRE_TOML_PATH):
+                    with open(WAYFIRE_TOML_PATH, "r") as f:
+                        raw_config = toml.load(f)
+
                 view.load_html(
-                    get_html(options.get("options", {}), enabled, get_svg), None
+                    get_html(options.get("options", {}), enabled, get_svg, raw_config),
+                    None,
                 )
             except Exception as e:
                 view.load_html(f"Error: {e}", None)
@@ -75,29 +84,33 @@ def get_plugin_class():
                 data = json.loads(msg.to_json(0))
                 msg_type = data.get("msg_type")
 
+                if msg_type == "manual_update":
+                    section, key, val = data["section"], data["key"], data["value"]
+                    if isinstance(val, str):
+                        stripped = val.strip()
+                        if (stripped.startswith("[") and stripped.endswith("]")) or (
+                            stripped.startswith("{") and stripped.endswith("}")
+                        ):
+                            try:
+                                val = ast.literal_eval(stripped)
+                            except:
+                                pass
+                    self._manual_save(section, key, val)
+                    return
+
                 if msg_type == "section_reset":
                     section = data.get("plugin")
                     updates = data.get("updates", {})
-                    # Process batch updates
                     for path, val in updates.items():
-                        # Simple type inference for batch reset
-                        if val.lower() in ["true", "false"]:
-                            p_val = val.lower() == "true"
-                        elif val.replace(".", "", 1).isdigit():
-                            p_val = float(val) if "." in val else int(val)
-                        else:
-                            p_val = val
-
-                        self.ipc.set_option_values({path: p_val})
-                        key = path.split("/")[-1]
-                        self._persist_to_toml(section, key, p_val)
+                        parsed = self._parse_val(val)
+                        self.ipc.set_option_values({path: parsed})
+                    self.panel.config_handler.save_config()
                     return
 
                 if msg_type == "toggle_plugin":
                     plist_reply = self.ipc.get_option_value("core/plugins")
                     if not plist_reply:
                         return
-
                     plist_raw = plist_reply.get("value", "")
                     plist = (
                         plist_raw.split()
@@ -113,44 +126,49 @@ def get_plugin_class():
 
                     new_val = " ".join(plist)
                     self.ipc.set_option_values({"core/plugins": new_val})
-                    self._persist_to_toml("core", "plugins", new_val)
-                else:
-                    path, val, vtype = data["path"], data["value"], data["type"]
+                    self.panel.config_handler.save_config()
+                    return
 
-                    if vtype == "bool":
-                        val = str(val).lower() == "true"
-                    elif vtype == "number":
-                        val = float(val) if "." in str(val) else int(val)
-                    elif vtype == "list" and isinstance(val, str):
-                        try:
-                            val = json.loads(val.replace("'", '"'))
-                        except:
-                            pass
-
-                    self.ipc.set_option_values({path: val})
-                    if "/" in path:
-                        section, key = path.split("/", 1)
-                        self._persist_to_toml(section, key, val)
+                # Default IPC update path
+                path, val, vtype = data["path"], data["value"], data["type"]
+                parsed_val = self._parse_val(val, vtype)
+                self.ipc.set_option_values({path: parsed_val})
+                self.panel.config_handler.save_config()
 
             except Exception as e:
                 self.logger.error(f"Sync error: {e}")
 
-        def _persist_to_toml(self, section, key, value):
+        def _parse_val(self, val, vtype=None):
+            if vtype == "bool" or str(val).lower() in ["true", "false"]:
+                return str(val).lower() == "true"
+            if vtype == "number" or (
+                isinstance(val, str)
+                and val.replace(".", "", 1).replace("-", "", 1).isdigit()
+            ):
+                return float(val) if "." in str(val) else int(val)
+            if vtype == "list" or (
+                isinstance(val, str) and val.strip().startswith("[")
+            ):
+                try:
+                    return ast.literal_eval(val)
+                except:
+                    return val
+            return val
+
+        def _manual_save(self, section, key, value):
             try:
                 os.makedirs(os.path.dirname(WAYFIRE_TOML_PATH), exist_ok=True)
                 config = {}
                 if os.path.exists(WAYFIRE_TOML_PATH):
                     with open(WAYFIRE_TOML_PATH, "r") as f:
                         config = toml.load(f)
-
                 if section not in config:
                     config[section] = {}
                 config[section][key] = value
-
                 with open(WAYFIRE_TOML_PATH, "w") as f:
                     toml.dump(config, f)
             except Exception as e:
-                self.logger.error(f"Failed to save to TOML: {e}")
+                self.logger.error(f"Manual save failed: {e}")
 
         def on_stop(self):
             if self.window:
