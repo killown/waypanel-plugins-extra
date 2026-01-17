@@ -1,13 +1,12 @@
 def get_plugin_metadata(panel):
     """Metadata for the plugin system."""
     id = "org.waypanel.plugin.wayfire_config_viewer"
-    container, id = panel.config_handler.get_plugin_container("right-panel-center", id)
     return {
         "id": id,
         "name": "Wayfire Config Viewer",
         "version": "2.4.0",
         "enabled": True,
-        "container": container,
+        "container": "background",
         "index": 10,
         "deps": ["app_launcher"],
     }
@@ -47,7 +46,6 @@ def get_plugin_class():
                     ),
                 },
             )
-            # self.main_widget = (self.button, "append")
 
         def on_click(self, _):
             if self.window and self.window.get_visible():
