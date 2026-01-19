@@ -18,7 +18,7 @@ def get_plugin_metadata(panel):
         "hidden": False,
         "container": container,
         "index": 3,
-        "deps": ["requests", "calendar"],
+        "deps": ["requests", "calendar", "css_generator"],
         "description": "A cryptocurrency price ticker that fetches data from the Binance API and integrates directly into the Calendar popover.",
     }
 
@@ -102,6 +102,7 @@ def get_plugin_class():
             Asynchronous entry point. Creates the UI indicator, integrates with the
             calendar, and starts the background data tasks (icon cache and price updates).
             """
+            self.plugins["css_generator"].install_css("main.css")
             self.logger.info("Lifecycle: CriptoPlugin starting.")
             self._setup_ui()
             self.run_in_thread(self._fetch_and_cache_icons)

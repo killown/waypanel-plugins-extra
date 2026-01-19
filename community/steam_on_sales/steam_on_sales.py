@@ -16,7 +16,7 @@ def get_plugin_metadata(panel):
         "hidden": True,
         "container": container,
         "index": 4,
-        "deps": ["requests", "calendar"],
+        "deps": ["requests", "calendar", "css_generator"],
         "description": "Monitors Steam game discounts and displays active sales in the Calendar popover.",
     }
 
@@ -87,6 +87,7 @@ def get_plugin_class():
             Asynchronous entry point. Sets up the UI, schedules initial integration
             with the calendar, and starts the recurring update task.
             """
+            self.plugins["css_generator"].install_css("steam_on_sales.css")
             self.logger.info("Lifecycle: SteamSalesPlugin starting.")
             self._sales_vbox = self._build_sales_vbox()
             self.schedule_in_gtk_thread(self._integrate_with_calendar)

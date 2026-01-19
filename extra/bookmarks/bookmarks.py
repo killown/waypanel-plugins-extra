@@ -15,7 +15,7 @@ def get_plugin_metadata(panel):
         "enabled": True,
         "index": 2,
         "container": container,
-        "deps": ["top_panel"],
+        "deps": ["top_panel", "css_generator"],
         "description": about,
     }
 
@@ -52,6 +52,7 @@ container = "personal"
             self.icons_loaded = False
             self.icon_cache: Dict[str, Any] = {}
             self.listbox = self.gtk.ListBox.new()
+            self.plugins["css_generator"].install_css("main.css")
             self.add_hint(
                 [
                     "Configuration for Browser Bookmarks plugin appearance, icon generation, and browser execution."

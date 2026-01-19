@@ -10,7 +10,7 @@ def get_plugin_metadata(_):
         "enabled": True,
         "index": 3,
         "container": "top-panel-box-widgets-left",
-        "deps": ["top_panel"],
+        "deps": ["top_panel", "css_generator"],
         "description": about,
     }
 
@@ -47,6 +47,7 @@ def get_plugin_class():
             self.scanner = Scanner(self)
             self.launcher = Launcher(self)
             self.ui_factory = UIFactory(self)
+            self.plugins["css_generator"].install_css("main.css")
 
         def on_start(self):
             """

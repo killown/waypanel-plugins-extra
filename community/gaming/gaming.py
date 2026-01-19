@@ -17,7 +17,7 @@ def get_plugin_metadata(panel):
         "enabled": True,
         "container": container,
         "index": 100,
-        "deps": ["top_panel"],
+        "deps": ["top_panel", "css_generator"],
         "description": "Unified launcher for Steam and Heroic games using exact local metadata discovery.",
     }
 
@@ -70,6 +70,7 @@ def get_plugin_class():
 
         def on_start(self):
             """Registers the main widget for the panel."""
+            self.plugins["css_generator"].install_css("gaming.css")
             self.main_button = self.gtk.Button.new_from_icon_name("input-gaming")
             self.main_button.connect("clicked", self._on_toggle_launcher)
             self._init_ui()
