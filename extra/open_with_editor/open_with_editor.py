@@ -17,9 +17,9 @@ def get_plugin_metadata(_):
 
 def get_plugin_class():
     from src.plugins.core._base import BasePlugin
-    from src.plugins.open_with_editor.scanner import get_scanner_logic
-    from src.plugins.open_with_editor.launcher import get_launcher_logic
-    from src.plugins.open_with_editor.ui import get_ui_factory
+    from .scanner import get_scanner_logic
+    from .launcher import get_launcher_logic
+    from .ui import get_ui_factory
 
     Scanner = get_scanner_logic()
     Launcher = get_launcher_logic()
@@ -48,10 +48,19 @@ def get_plugin_class():
             self.launcher = Launcher(self)
             self.ui_factory = UIFactory(self)
 
-        def on_enable(self):
+        def on_start(self):
+            """
+            Initialize configuration and UI components.
+            """
             self.launcher.init_config()
             self.ui_factory.create_menu_button()
             self.main_widget = (self.ui_factory.menubutton, "append")
+
+        def on_enable(self):
+            """
+            Lifecycle handled by on_start.
+            """
+            pass
 
         def open_popover(self, *_):
             if self.popover_openwitheditor and self.popover_openwitheditor.is_visible():

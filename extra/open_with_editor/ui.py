@@ -25,86 +25,100 @@ def get_ui_factory():
                 closed_handler=self.on_closed,
                 visible_handler=self.on_open,
             )
+
             box = self.p.gtk.Box.new(self.p.gtk.Orientation.VERTICAL, 0)
             box.add_css_class("openwitheditor-main-box")
 
             self.p.stack = self.p.gtk.Stack.new()
-            self.p.stack.set_transition_type(
-                self.p.gtk.StackTransitionType.SLIDE_LEFT_RIGHT
-            )
+            self.p.stack.add_css_class("openwitheditor-stack")
 
             switcher = self.p.gtk.StackSwitcher.new()
             switcher.set_stack(self.p.stack)
+            switcher.add_css_class("openwitheditor-stack-switcher")
 
-            for name in self.p.config_maps:
-                page = self._build_page(name)
-                self.p.stack.add_titled(page, name, name)
-
-            self.p.stack.connect("notify::visible-child", self.on_tab_switched)
             box.append(switcher)
             box.append(self.p.stack)
+
+            for name, path in self.p.config_maps.items():
+                page = self.p.gtk.Box.new(self.p.gtk.Orientation.VERTICAL, 0)
+                page.add_css_class("openwitheditor-page-box")
+
+                search_entry = self.p.gtk.SearchEntry.new()
+                search_entry.add_css_class("openwitheditor-search-entry")
+                search_entry.connect("search-changed", self.on_search_changed)
+
+                scrolled = self.p.gtk.ScrolledWindow.new()
+                scrolled.add_css_class("openwitheditor-scrolled-window")
+                scrolled.set_policy(
+                    self.p.gtk.PolicyType.NEVER, self.p.gtk.PolicyType.AUTOMATIC
+                )
+
+                listbox = self.p.gtk.ListBox.new()
+                listbox.add_css_class("openwitheditor-listbox")
+                listbox.connect("row-activated", self.on_activated)
+
+                scrolled.set_child(listbox)
+                page.append(search_entry)
+                page.append(scrolled)
+
+                self.p.stack.add_titled(page, name, name)
+                self.p.listbox_widgets[name] = listbox
+                self.p.searchbar_widgets[name] = search_entry
+
             self.p.popover_openwitheditor.set_child(box)
 
-            self._sync_active()
-            self._populate()
-            self.p.popover_openwitheditor.popup()
+        def on_open(self, *_):
+            self.p.active_dir_name = self.p.stack.get_visible_child_name()
+            self.p.config_dir = self.p.config_maps[self.p.active_dir_name]
+            self.p.active_listbox = self.p.listbox_widgets[self.p.active_dir_name]
+            self.p.active_searchbar = self.p.searchbar_widgets[self.p.active_dir_name]
 
-        def _build_page(self, name):
-            box = self.p.gtk.Box.new(self.p.gtk.Orientation.VERTICAL, 0)
-            entry = self.p.gtk.SearchEntry.new()
-            entry.connect("search_changed", self.on_search_changed)
-
-            listbox = self.p.gtk.ListBox.new()
-            listbox.connect("row-activated", self.on_activated)
-
-            scroll = self.p.gtk.ScrolledWindow()
-            scroll.set_min_content_width(800)
-            scroll.set_min_content_height(600)
-            scroll.set_child(listbox)
-
-            box.append(entry)
-            box.append(scroll)
-            self.p.searchbar_widgets[name] = entry
-            self.p.listbox_widgets[name] = listbox
-            return box
-
-        def on_tab_switched(self, stack, _):
-            self._sync_active()
-            if self.p.active_listbox.get_row_at_index(0) is None:
-                self._populate()
-            self.p.active_searchbar.grab_focus()
-
-        def _sync_active(self):
-            name = self.p.stack.get_visible_child_name()
-            self.p.active_dir_name = name
-            self.p.config_dir = self.p.config_maps[name]
-            self.p.active_listbox = self.p.listbox_widgets[name]
-            self.p.active_searchbar = self.p.searchbar_widgets[name]
-
-        def _populate(self):
             files = self.p.scanner.get_files(self.p.config_dir)
+
+            while child := self.p.active_listbox.get_first_child():
+                self.p.active_listbox.remove(child)
+
             for f in files:
-                row = self._create_row(f)
+                row_content = self._create_row(f)
+                row = self.p.gtk.ListBoxRow.new()
+                row.set_child(row_content)
+
                 gesture = self.p.gtk.GestureClick.new()
-                gesture.connect("pressed", self.on_click, row)
+                gesture.set_button(0)
+                gesture.connect("pressed", self.on_click, row_content)
                 row.add_controller(gesture)
+
                 self.p.active_listbox.append(row)
+
             self.p.active_listbox.set_filter_func(self.filter_func)
 
         def _create_row(self, path):
-            box = self.p.gtk.Box.new(self.p.gtk.Orientation.HORIZONTAL, 0)
-            box.MYTEXT = path
-            label = self.p.gtk.Label.new(os.path.relpath(path, self.p.config_dir))
-            label.set_halign(self.p.gtk.Align.START)
-            box.append(label)
-            return box
+            row_hbox = self.p.gtk.Box.new(self.p.gtk.Orientation.HORIZONTAL, 0)
+            row_hbox.add_css_class("openwitheditor-row-hbox")
+            row_hbox.MYTEXT = path
 
-        def on_click(self, gesture, _, x, y, row):
+            icon = self.p.gtk.Image.new_from_icon_name("text-x-generic-symbolic")
+            icon.add_css_class("openwitheditor-icon-from-popover")
+
+            label = self.p.gtk.Label.new(os.path.relpath(path, self.p.config_dir))
+            label.add_css_class("openwitheditor-label-from-popover")
+            label.set_halign(self.p.gtk.Align.START)
+
+            row_hbox.append(icon)
+            row_hbox.append(label)
+            return row_hbox
+
+        def on_closed(self, *_):
+            pass
+
+        def on_click(self, gesture, _, x, y, row_content):
             btn = gesture.get_current_button()
             if btn == 3:
-                self.p.launcher.open_file(os.path.dirname(row.MYTEXT), is_dir=True)
+                self.p.launcher.open_file(
+                    os.path.dirname(row_content.MYTEXT), is_dir=True
+                )
             else:
-                self.p.launcher.open_file(row.MYTEXT, index=btn - 1)
+                self.p.launcher.open_file(row_content.MYTEXT, index=btn - 1)
 
         def on_activated(self, lb, row):
             self.p.launcher.open_file(row.get_child().MYTEXT, 0)
@@ -114,12 +128,8 @@ def get_ui_factory():
 
         def filter_func(self, row):
             query = self.p.active_searchbar.get_text().lower()
+            if not query:
+                return True
             return query in row.get_child().MYTEXT.lower()
-
-        def on_open(self, *_):
-            self.p.active_searchbar.grab_focus()
-
-        def on_closed(self, *_):
-            self.p.set_keyboard_on_demand(False)
 
     return UIFactory
