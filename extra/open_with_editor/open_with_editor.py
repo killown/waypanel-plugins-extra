@@ -64,10 +64,11 @@ def get_plugin_class():
             pass
 
         def open_popover(self, *_):
-            if self.popover_openwitheditor and self.popover_openwitheditor.is_visible():
-                self.popover_openwitheditor.popdown()
-            elif not self.popover_openwitheditor:
+            if not self.popover_openwitheditor:
                 self.ui_factory.create_popover()
+
+            if self.popover_openwitheditor.is_visible():
+                self.popover_openwitheditor.popdown()
             else:
                 if self.active_listbox:
                     self.active_listbox.unselect_all()
