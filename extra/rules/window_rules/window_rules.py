@@ -38,6 +38,9 @@ def get_plugin_class():
             if not view:
                 return
 
+            if view["type"] != "toplevel":
+                return
+
             for rule in self.get_plugin_setting("rules", []):
                 if rule.get("event") == ev and self.engine.match(rule, view):
                     t = rule.get("timeout", 0)
