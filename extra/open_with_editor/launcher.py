@@ -1,0 +1,76 @@
+def get_launcher_logic():
+    import os
+
+    class FileLauncher:
+        def __init__(self, plugin):
+            self.p = plugin
+            self.tui_editors = ["nvim", "vi", "vim", "emacs", "nano", "micro", "ed"]
+
+        def init_config(self):
+            raw_dirs = self.p.get_plugin_setting(
+                ["directories"], {"nvim": "~/.config/nvim"}
+            )
+            self.p.config_maps = {k: os.path.expanduser(v) for k, v in raw_dirs.items()}
+            self.p.active_dir_name = next(iter(self.p.config_maps))
+            self.p.config_dir = self.p.config_maps[self.p.active_dir_name]
+
+            self.p.editor_extensions = self.p.get_plugin_setting(
+                ["extensions"],
+                {
+                    "py": ["nvim", "code"],
+                    "lua": ["nvim", "code"],
+                    "js": ["code", "nvim"],
+                },
+            )
+
+            self.p.terminal_emulators = self.p.get_plugin_setting(
+                ["terminal_emulators"],
+                ["kitty", "alacritty", "gnome-terminal", "xterm"],
+            )
+
+        def open_file(self, file_path, index=0, is_dir=False):
+            if not file_path:
+                return
+
+            editor = "nvim" if is_dir else self._get_editor(file_path, index)
+            is_tui = editor in self.tui_editors
+            success = False
+
+            if is_tui:
+                title = f"{editor} {os.path.basename(file_path)}"
+                cmd_str = f"{editor} {file_path}"
+                for term in self.p.terminal_emulators:
+                    if term in ["gnome-terminal", "terminator", "tilix"]:
+                        cmd = f'{term} --title="{title}" -- /bin/sh -c "{cmd_str}"'
+                    elif term in ["xfce4-terminal", "lxterminal"]:
+                        cmd = f'{term} --title="{title}" --command "{cmd_str}"'
+                    else:
+                        cmd = f'{term} -T "{title}" -e {cmd_str}'
+
+                    try:
+                        self.p.run_cmd(cmd)
+                        success = True
+                        break
+                    except:
+                        continue
+            else:
+                try:
+                    self.p.run_cmd(f"{editor} {file_path}")
+                    success = True
+                except:
+                    pass
+
+            if success and self.p.popover_openwitheditor:
+                self.p.popover_openwitheditor.popdown()
+
+        def _get_editor(self, path, index):
+            ext = path.split(".")[-1].lower() if "." in path else ""
+            val = self.p.editor_extensions.get(ext, ["nvim", "code"])
+            editors = (
+                [e.strip() for e in val]
+                if isinstance(val, list)
+                else [e.strip() for e in val.split(",")]
+            )
+            return editors[index] if index < len(editors) else editors[0]
+
+    return FileLauncher
