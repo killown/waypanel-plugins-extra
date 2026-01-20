@@ -112,3 +112,13 @@ separator {
   border: none;
   background: transparent;
 }
+
+.rule-toast {
+  background-color: var(--color-status-success);
+  color: white;
+  padding: 10px 24px;
+  border-radius: var(--radius-xl);
+  font-weight: var(--font-weight-bold);
+  box-shadow: var(--shadow-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
