@@ -14,6 +14,7 @@ def get_plugin_metadata(panel):
         "version": "1.0.0",
         "enabled": True,
         "index": 2,
+        "priority": 600,
         "container": container,
         "deps": ["top_panel", "css_generator"],
         "description": about,

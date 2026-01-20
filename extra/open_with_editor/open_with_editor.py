@@ -9,6 +9,7 @@ def get_plugin_metadata(_):
         "version": "1.0.0",
         "enabled": True,
         "index": 3,
+        "priority": 300,
         "container": "top-panel-box-widgets-left",
         "deps": ["top_panel", "css_generator"],
         "description": about,
