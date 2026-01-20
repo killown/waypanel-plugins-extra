@@ -1,0 +1,114 @@
+/* ================================================= */
+/* ==== WINDOW RULES PLUGIN - GNOME HIG STYLING ==== */
+/* ================================================= */
+
+/* Main List Container */
+.boxed-list {
+  background-color: var(--color-bg-base);
+  border: 1px solid var(--color-separator-line);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-neumorphic-outset-small);
+}
+
+/* Individual Rule Row */
+.rule-row {
+  padding: 12px;
+  transition: background-color 200ms ease;
+  border-radius: var(--radius-s);
+}
+
+.rule-row:hover {
+  background-color: var(--color-bg-alt-row);
+}
+
+/* Rule Name - Stronger Typography */
+.rule-name {
+  font-weight: var(--font-weight-bold);
+  background-color: var(--color-bg-entry-base);
+  border-radius: var(--radius-s);
+  padding: 4px 8px;
+  border: 1px solid transparent;
+}
+
+.rule-name:focus {
+  border-color: var(--color-accent-blue);
+  background-color: var(--color-bg-entry-focus);
+  box-shadow: var(--theme-decoration-keyboard-focus);
+}
+
+/* Dropdowns (Match Key, Event, Action) */
+.rule-match-key,
+.rule-event,
+.rule-action,
+.rule-match-dropdown,
+.rule-action-dropdown {
+  background-color: var(--color-bg-button);
+  border-radius: var(--radius-s);
+  border: 1px solid var(--color-separator-line);
+  padding: 2px;
+}
+
+.rule-match-key:hover,
+.rule-event:hover,
+.rule-action:hover {
+  background-color: var(--color-bg-button-hover);
+}
+
+/* Match & Action Value Containers */
+.rule-match-value-container,
+.rule-action-value-container {
+  background-color: var(--color-bg-deep);
+  border-radius: var(--radius-s);
+  padding: 4px;
+  border: 1px solid var(--color-separator-line);
+}
+
+/* Entries and ComboBoxes */
+.rule-match-entry,
+.rule-action-entry {
+  background: transparent;
+  border: none;
+  color: var(--color-fg-primary);
+  padding-left: 6px;
+}
+
+/* Numeric/Spin Adjustments */
+.rule-timeout,
+.rule-action-spin {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-accent-blue);
+}
+
+/* Toggle Switches */
+.rule-action-switch {
+  margin-left: 4px;
+}
+
+/* Delete Button - Danger State */
+.rule-delete {
+  color: var(--color-status-danger);
+  background: transparent;
+  border-radius: var(--radius-control-default);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rule-delete:hover {
+  background-color: var(--color-status-danger);
+  color: white;
+  box-shadow: 0 0 10px var(--color-status-danger-bg);
+}
+
+/* Separator styling */
+separator {
+  background-color: var(--color-separator-line);
+  margin: 0 10px;
+  min-height: 1px;
+  opacity: 0.5;
+}
+
+/* Responsive spacing for the value boxes */
+.rule-action-value-container:empty {
+  border: none;
+  background: transparent;
+}

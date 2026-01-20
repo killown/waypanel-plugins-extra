@@ -1,3 +1,6 @@
+"""Window Rules Plugin for Waypanel."""
+
+
 def get_plugin_metadata(_):
     from .template import METADATA
 
@@ -17,9 +20,15 @@ def get_plugin_class():
             self.manager = RuleManager(self)
 
         def on_start(self):
+            # Register CSS for the rule manager UI
+            self.plugins["css_generator"].install_css("window_rules.css")
+
+            # Initialize settings
             self.get_plugin_setting_add_hint(
                 "rules", [], "List of fuzzy-logic window rules."
             )
+
+            # Delayed subscription to event manager
             self.glib.timeout_add(500, self._subscribe)
 
         def _subscribe(self):
@@ -41,6 +50,7 @@ def get_plugin_class():
             if view["type"] != "toplevel":
                 return
 
+            # Apply rules defined in the Rule Manager
             for rule in self.get_plugin_setting("rules", []):
                 if rule.get("event") == ev and self.engine.match(rule, view):
                     t = rule.get("timeout", 0)
