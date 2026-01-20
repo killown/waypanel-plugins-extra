@@ -47,7 +47,6 @@ class RuleManager:
         header = self.p.gtk.HeaderBar()
         self.window.set_titlebar(header)
 
-        # Search Bar
         self.search_entry = self.p.gtk.SearchEntry(placeholder_text="Filter rules...")
         self.search_entry.set_width_chars(30)
         self.search_entry.connect("search-changed", self._on_search_changed)
@@ -87,22 +86,34 @@ class RuleManager:
         search_text = entry.get_text().lower()
         row = self.list_box.get_first_child()
         while row:
-            # Get the match value from the second widget in the box
             inner_box = row.get_child().get_first_child()
-            match_val_widget = inner_box.get_first_child().get_next_sibling()
-            val = self._get_val(match_val_widget).lower()
 
-            row.set_visible(search_text in val if search_text else True)
+            # Layout order: [Name, MatchKey, MatchVal, Event, Timeout, Action, ActionVal, Trash]
+            name_widget = inner_box.get_first_child()
+            key_widget = name_widget.get_next_sibling()
+            val_widget = key_widget.get_next_sibling()
+
+            rule_name = self._get_val(name_widget).lower()
+            match_val = self._get_val(val_widget).lower()
+
+            # Priority: Name first, then content
+            is_visible = not search_text or (
+                search_text in rule_name or search_text in match_val
+            )
+            row.set_visible(is_visible)
             row = row.get_next_sibling()
 
     def capture_focused(self):
         view = self.p.wf_helper.get_most_recent_focused_view()
         if not view:
             return
+
+        app_id = view.get("app-id", "")
         self.add_row(
             {
+                "name": f"Rule: {app_id}" if app_id else "Captured Rule",
                 "match_key": "app-id",
-                "match_value": view.get("app-id", ""),
+                "match_value": app_id,
                 "event": "view-mapped",
                 "timeout": 0,
                 "action": "center",
@@ -117,20 +128,34 @@ class RuleManager:
         row_container.set_margin_top(8)
         row_container.set_margin_bottom(8)
         row = self.p.gtk.Box(spacing=10)
+        row.add_css_class("rule-row")
+
+        name_entry = self.p.gtk.Entry(placeholder_text="Rule Name")
+        name_entry.set_width_chars(20)
+        name_entry.add_css_class("rule-name")
 
         match_key_drop = self.p.gtk.DropDown.new_from_strings(MATCH_KEYS)
+        match_key_drop.add_css_class("rule-match-key")
+
         match_val_wrapper = self.p.gtk.Box(hexpand=True)
+        match_val_wrapper.add_css_class("rule-match-value-container")
+
         event_drop = self._create_dropdown_with_hints(EVENT_LIST, EVENT_HINTS)
+        event_drop.add_css_class("rule-event")
 
         timeout_adj = self.p.gtk.Adjustment.new(0, 0, 10000, 50, 500, 0)
         timeout_spin = self.p.gtk.SpinButton(adjustment=timeout_adj, numeric=True)
         timeout_spin.set_tooltip_text(
             "Milliseconds to wait after event before firing action"
         )
+        timeout_spin.add_css_class("rule-timeout")
 
         action_drop = self._create_dropdown_with_hints(ACTION_LIST, ACTION_HINTS)
+        action_drop.add_css_class("rule-action")
+
         value_wrapper = self.p.gtk.Box(spacing=6)
         value_wrapper.set_size_request(250, -1)
+        value_wrapper.add_css_class("rule-action-value-container")
 
         def update_match_value_widget(key, initial_val=None):
             if child := match_val_wrapper.get_first_child():
@@ -149,22 +174,26 @@ class RuleManager:
                     widget.append_text(aid)
                 if initial_val:
                     widget.get_child().set_text(str(initial_val))
+                widget.add_css_class("rule-match-entry")
                 match_val_wrapper.append(widget)
             elif key == "output-name":
                 outputs = [o.get("name") for o in self.p.ipc.list_outputs() or []]
                 widget = self.p.gtk.DropDown.new_from_strings(outputs)
                 if initial_val and initial_val in outputs:
                     widget.set_selected(outputs.index(initial_val))
+                widget.add_css_class("rule-match-dropdown")
                 match_val_wrapper.append(widget)
             elif key == "parent":
                 widget = self.p.gtk.DropDown.new_from_strings(PARENT_STATES)
                 if initial_val == "Dialog or Popup":
                     widget.set_selected(1)
+                widget.add_css_class("rule-match-dropdown")
                 match_val_wrapper.append(widget)
             else:
                 widget = self.p.gtk.Entry(placeholder_text="Value...", hexpand=True)
                 if initial_val:
                     widget.set_text(str(initial_val))
+                widget.add_css_class("rule-match-entry")
                 match_val_wrapper.append(widget)
 
         def update_action_value_widget(action_name, initial_val=None):
@@ -184,23 +213,27 @@ class RuleManager:
                 widget.set_valign(self.p.gtk.Align.CENTER)
                 if initial_val is not None:
                     widget.set_active(str(initial_val).lower() == "true")
+                widget.add_css_class("rule-action-switch")
                 value_wrapper.append(widget)
             elif action_name == "move_to_output":
                 outputs = [o.get("name") for o in self.p.ipc.list_outputs() or []]
                 widget = self.p.gtk.DropDown.new_from_strings(outputs)
                 if initial_val and initial_val in outputs:
                     widget.set_selected(outputs.index(initial_val))
+                widget.add_css_class("rule-action-dropdown")
                 value_wrapper.append(widget)
             elif action_name == "alpha":
                 adj = self.p.gtk.Adjustment.new(1.0, 0.0, 1.0, 0.1, 0.1, 0.0)
                 widget = self.p.gtk.SpinButton(adjustment=adj, digits=1)
                 if initial_val is not None:
                     widget.set_value(float(initial_val))
+                widget.add_css_class("rule-action-spin")
                 value_wrapper.append(widget)
             else:
                 widget = self.p.gtk.Entry(placeholder_text="Value", hexpand=True)
                 if initial_val:
                     widget.set_text(str(initial_val))
+                widget.add_css_class("rule-action-entry")
                 value_wrapper.append(widget)
 
         match_key_drop.connect(
@@ -213,6 +246,7 @@ class RuleManager:
         )
 
         if data:
+            name_entry.set_text(data.get("name", ""))
             match_key_drop.set_selected(
                 MATCH_KEYS.index(data.get("match_key", "app-id"))
             )
@@ -227,10 +261,12 @@ class RuleManager:
 
         del_btn = self.p.gtk.Button(icon_name="user-trash-symbolic")
         del_btn.add_css_class("destructive-action")
+        del_btn.add_css_class("rule-delete")
         del_btn.connect(
             "clicked", lambda _: self.list_box.remove(row_container.get_parent())
         )
 
+        row.append(name_entry)
         row.append(match_key_drop)
         row.append(match_val_wrapper)
         row.append(event_drop)
@@ -255,12 +291,13 @@ class RuleManager:
 
             rules.append(
                 {
-                    "match_key": ws[0].get_selected_item().get_string(),
-                    "match_value": self._get_val(ws[1]),
-                    "event": ws[2].get_selected_item().get_string(),
-                    "timeout": int(ws[3].get_value()),
-                    "action": ws[4].get_selected_item().get_string(),
-                    "value": self._get_val(ws[5]),
+                    "name": self._get_val(ws[0]),
+                    "match_key": ws[1].get_selected_item().get_string(),
+                    "match_value": self._get_val(ws[2]),
+                    "event": ws[3].get_selected_item().get_string(),
+                    "timeout": int(ws[4].get_value()),
+                    "action": ws[5].get_selected_item().get_string(),
+                    "value": self._get_val(ws[6]),
                 }
             )
             child = child.get_next_sibling()
