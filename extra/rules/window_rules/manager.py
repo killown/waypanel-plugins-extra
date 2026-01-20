@@ -19,6 +19,7 @@ class RuleManager:
         self.window = None
         self.list_box = None
         self.search_entry = None
+        self.overlay = None
 
     def _create_dropdown_with_hints(self, items, hint_map):
         """Internal helper to build dropdowns with item tooltips."""
@@ -57,16 +58,12 @@ class RuleManager:
         add_btn.connect("clicked", lambda _: self.add_row())
         header.pack_start(add_btn)
 
-        capture_btn = self.p.gtk.Button(icon_name="camera-photo-symbolic")
-        capture_btn.set_tooltip_text("Capture properties from currently focused window")
-        capture_btn.connect("clicked", lambda _: self.capture_focused())
-        header.pack_start(capture_btn)
-
         save_btn = self.p.gtk.Button(label="Save")
         save_btn.add_css_class("suggested-action")
         save_btn.connect("clicked", lambda _: self.save())
         header.pack_end(save_btn)
 
+        self.overlay = self.p.gtk.Overlay()
         scrolled = self.p.gtk.ScrolledWindow()
         self.list_box = self.p.gtk.ListBox()
         self.list_box.set_selection_mode(self.p.gtk.SelectionMode.NONE)
@@ -76,19 +73,29 @@ class RuleManager:
             getattr(self.list_box, f"set_margin_{m}")(20)
 
         scrolled.set_child(self.list_box)
-        self.window.set_child(scrolled)
+        self.overlay.set_child(scrolled)
+        self.window.set_child(self.overlay)
 
         self.refresh_ui()
         self.window.connect("close-request", self._on_close)
         self.window.present()
+
+    def _show_toast(self, text):
+        """Displays a temporary toast notification using Adwaita success colors."""
+        toast = self.p.gtk.Label(label=text)
+        toast.add_css_class("rule-toast")
+        toast.set_halign(self.p.gtk.Align.CENTER)
+        toast.set_valign(self.p.gtk.Align.END)
+        toast.set_margin_bottom(40)
+
+        self.overlay.add_overlay(toast)
+        self.p.glib.timeout_add(5000, lambda: self.overlay.remove_overlay(toast))
 
     def _on_search_changed(self, entry):
         search_text = entry.get_text().lower()
         row = self.list_box.get_first_child()
         while row:
             inner_box = row.get_child().get_first_child()
-
-            # Layout order: [Name, MatchKey, MatchVal, Event, Timeout, Action, ActionVal, Trash]
             name_widget = inner_box.get_first_child()
             key_widget = name_widget.get_next_sibling()
             val_widget = key_widget.get_next_sibling()
@@ -96,30 +103,11 @@ class RuleManager:
             rule_name = self._get_val(name_widget).lower()
             match_val = self._get_val(val_widget).lower()
 
-            # Priority: Name first, then content
             is_visible = not search_text or (
                 search_text in rule_name or search_text in match_val
             )
             row.set_visible(is_visible)
             row = row.get_next_sibling()
-
-    def capture_focused(self):
-        view = self.p.wf_helper.get_most_recent_focused_view()
-        if not view:
-            return
-
-        app_id = view.get("app-id", "")
-        self.add_row(
-            {
-                "name": f"Rule: {app_id}" if app_id else "Captured Rule",
-                "match_key": "app-id",
-                "match_value": app_id,
-                "event": "view-mapped",
-                "timeout": 0,
-                "action": "center",
-                "value": "",
-            }
-        )
 
     def add_row(self, data=None):
         row_container = self.p.gtk.Box(
@@ -145,9 +133,6 @@ class RuleManager:
 
         timeout_adj = self.p.gtk.Adjustment.new(0, 0, 10000, 50, 500, 0)
         timeout_spin = self.p.gtk.SpinButton(adjustment=timeout_adj, numeric=True)
-        timeout_spin.set_tooltip_text(
-            "Milliseconds to wait after event before firing action"
-        )
         timeout_spin.add_css_class("rule-timeout")
 
         action_drop = self._create_dropdown_with_hints(ACTION_LIST, ACTION_HINTS)
@@ -276,10 +261,14 @@ class RuleManager:
         row.append(del_btn)
         row_container.append(row)
         row_container.append(self.p.gtk.Separator())
-        self.list_box.append(row_container)
+
+        # Newest rules at the top
+        self.list_box.prepend(row_container)
 
     def save(self):
         rules = []
+        # Since the UI is prepended, we read from top to bottom
+        # but save in an order that maintains consistency
         child = self.list_box.get_first_child()
         while child:
             row = child.get_child().get_first_child()
@@ -301,7 +290,11 @@ class RuleManager:
                 }
             )
             child = child.get_next_sibling()
-        self.p.set_plugin_setting("rules", rules)
+
+        # We reverse to keep the "Top of UI" rules at the end of the settings list
+        # so refresh_ui (which prepends) puts them back at the top.
+        self.p.set_plugin_setting("rules", rules[::-1])
+        self._show_toast("Window Rules Saved Successfully")
 
     def _get_val(self, widget):
         if isinstance(widget, self.p.gtk.ComboBoxText):
@@ -324,9 +317,12 @@ class RuleManager:
         return ""
 
     def refresh_ui(self):
+        # Saved rules are stored chronologically.
+        # Iterating normally with prepend will naturally put the last rule at the top.
         for r in self.p.get_plugin_setting("rules", []):
             self.add_row(r)
 
     def _on_close(self, _):
         self.window = None
+        self.overlay = None
         return False
