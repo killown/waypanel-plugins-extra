@@ -20,7 +20,7 @@ def get_plugin_class():
             self.get_plugin_setting_add_hint(
                 "rules", [], "List of fuzzy-logic window rules."
             )
-            self.glib.idle_add(self._subscribe)
+            self.glib.timeout_add(500, self._subscribe)
 
         def _subscribe(self):
             mgr = self.plugins.get("org.waypanel.plugin.event_manager")
