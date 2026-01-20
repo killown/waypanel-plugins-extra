@@ -8,6 +8,8 @@ from .template import (
     TYPES,
     PARENT_STATES,
     SLOTS,
+    SLOT_MAP,
+    REVERSE_SLOT_MAP,
     EVENT_HINTS,
     ACTION_HINTS,
 )
@@ -85,6 +87,7 @@ class RuleManager:
         self.window.present()
 
     def _show_toast(self, text):
+        """Displays a temporary toast notification using Adwaita success colors."""
         toast = self.p.gtk.Label(label=text)
         toast.add_css_class("rule-toast")
         toast.set_halign(self.p.gtk.Align.CENTER)
@@ -105,10 +108,11 @@ class RuleManager:
                 inner_box.get_first_child().get_next_sibling()
             ).lower()
 
-            match_key = (
+            match_key_widget = (
                 inner_box.get_first_child().get_next_sibling().get_next_sibling()
             )
-            match_val = self._get_val(match_key.get_next_sibling()).lower()
+            match_val_widget = match_key_widget.get_next_sibling()
+            match_val = self._get_val(match_val_widget).lower()
 
             is_visible = not search_text or (
                 search_text in name_val
@@ -228,6 +232,16 @@ class RuleManager:
                     widget.set_value(float(initial_val))
                 widget.add_css_class("rule-action-spin")
                 value_wrapper.append(widget)
+            elif action_name == "assign_slot":
+                display_names = list(SLOT_MAP.keys())
+                widget = self.p.gtk.DropDown.new_from_strings(display_names)
+                if initial_val:
+                    # Internal 'slot_t' -> Display 'Top'
+                    display_val = REVERSE_SLOT_MAP.get(initial_val, initial_val)
+                    if display_val in display_names:
+                        widget.set_selected(display_names.index(display_val))
+                widget.add_css_class("rule-action-dropdown")
+                value_wrapper.append(widget)
             else:
                 widget = self.p.gtk.Entry(placeholder_text="Value", hexpand=True)
                 if initial_val:
@@ -291,6 +305,15 @@ class RuleManager:
                 ws.append(curr)
                 curr = curr.get_next_sibling()
 
+            # Handle SLOT display-to-internal translation during save
+            action_str = ws[6].get_selected_item().get_string()
+            raw_val = self._get_val(ws[7])
+            if action_str == "assign_slot":
+                # Display 'Top' -> Internal 'slot_t'
+                save_val = SLOT_MAP.get(raw_val, raw_val)
+            else:
+                save_val = raw_val
+
             rules.append(
                 {
                     "name": self._get_val(ws[0]),
@@ -299,8 +322,8 @@ class RuleManager:
                     "match_value": self._get_val(ws[3]),
                     "event": ws[4].get_selected_item().get_string(),
                     "timeout": int(ws[5].get_value()),
-                    "action": ws[6].get_selected_item().get_string(),
-                    "value": self._get_val(ws[7]),
+                    "action": action_str,
+                    "value": save_val,
                 }
             )
             child = child.get_next_sibling()

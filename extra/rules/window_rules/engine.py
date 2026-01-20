@@ -72,6 +72,14 @@ class RuleEngine:
                 self.p.logger.error(f"Failed to execute action {action}: {e}")
 
     # Dedicated Action Methods
+    #
+    def _act_assign_slot(self, v_id, val):
+        from .template import SLOT_MAP
+
+        # If the value is a display name (e.g. "Top"), translate it.
+        # If it's already an internal ID, use it directly.
+        slot_id = SLOT_MAP.get(val, val)
+        self.p.ipc.assign_slot(v_id, slot_id)
 
     def _act_fullscreen(self, v_id, val):
         self.p.ipc.set_view_fullscreen(v_id, str(val).lower() == "true")
@@ -104,9 +112,6 @@ class RuleEngine:
 
     def _act_center_cursor(self, v_id, _):
         self.p.ipc.center_cursor_on_view(v_id)
-
-    def _act_assign_slot(self, v_id, val):
-        self.p.ipc.assign_slot(v_id, str(val))
 
     def _act_press_key(self, _, val):
         self.p.ipc.press_key(str(val))

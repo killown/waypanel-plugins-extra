@@ -50,17 +50,33 @@ ACTION_LIST = [
 ROLES = ["toplevel", "desktop-environment", "popup", "subsurface"]
 TYPES = ["toplevel", "background", "panel", "overlay"]
 PARENT_STATES = ["Main Window", "Dialog or Popup"]
+
 SLOTS = [
-    "slot_tl",
-    "slot_t",
-    "slot_tr",
-    "slot_l",
-    "slot_c",
-    "slot_r",
-    "slot_bl",
-    "slot_b",
-    "slot_br",
+    "Top Left",
+    "Top",
+    "Top Right",
+    "Left",
+    "Center",
+    "Right",
+    "Bottom Left",
+    "Bottom",
+    "Bottom Right",
 ]
+
+SLOT_MAP = {
+    "Top Left": "slot_tl",
+    "Top": "slot_t",
+    "Top Right": "slot_tr",
+    "Left": "slot_l",
+    "Center": "slot_c",
+    "Right": "slot_r",
+    "Bottom Left": "slot_bl",
+    "Bottom": "slot_b",
+    "Bottom Right": "slot_br",
+}
+
+# Add a reverse map for loading existing rules
+REVERSE_SLOT_MAP = {v: k for k, v in SLOT_MAP.items()}
 
 EVENT_HINTS = {
     "view-focused": "Emitted when input focus changes.",
