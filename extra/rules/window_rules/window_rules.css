@@ -122,3 +122,18 @@ separator {
   box-shadow: var(--shadow-elevated);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+.rule-description {
+  background-color: var(--color-bg-entry-base);
+  color: var(--color-fg-secondary);
+  font-style: italic;
+  border-radius: var(--radius-s);
+  padding: 4px 8px;
+  border: 1px solid var(--color-separator-line);
+}
+
+.rule-description:focus {
+  color: var(--color-fg-primary);
+  border-color: var(--color-accent-blue);
+  background-color: var(--color-bg-entry-focus);
+}

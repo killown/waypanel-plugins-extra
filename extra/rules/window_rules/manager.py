@@ -42,14 +42,18 @@ class RuleManager:
             self.window.present()
             return
 
-        self.window = self.p.gtk.Window(title="Window Rules")
+        self.window = self.p.gtk.Window()
+        self.window.set_title("Waypanel Window Rules")
+        self.window.set_name("org.waypanel.plugin.window_rules")
         self.window.set_default_size(1400, 750)
 
         header = self.p.gtk.HeaderBar()
         self.window.set_titlebar(header)
 
-        self.search_entry = self.p.gtk.SearchEntry(placeholder_text="Filter rules...")
-        self.search_entry.set_width_chars(30)
+        self.search_entry = self.p.gtk.SearchEntry(
+            placeholder_text="Filter by name, value, or description..."
+        )
+        self.search_entry.set_width_chars(40)
         self.search_entry.connect("search-changed", self._on_search_changed)
         header.set_title_widget(self.search_entry)
 
@@ -81,13 +85,11 @@ class RuleManager:
         self.window.present()
 
     def _show_toast(self, text):
-        """Displays a temporary toast notification using Adwaita success colors."""
         toast = self.p.gtk.Label(label=text)
         toast.add_css_class("rule-toast")
         toast.set_halign(self.p.gtk.Align.CENTER)
         toast.set_valign(self.p.gtk.Align.END)
         toast.set_margin_bottom(40)
-
         self.overlay.add_overlay(toast)
         self.p.glib.timeout_add(5000, lambda: self.overlay.remove_overlay(toast))
 
@@ -95,16 +97,23 @@ class RuleManager:
         search_text = entry.get_text().lower()
         row = self.list_box.get_first_child()
         while row:
+            # Layout: [Name, Desc, MatchKey, MatchVal, Event, Timeout, Action, ActionVal, Trash]
             inner_box = row.get_child().get_first_child()
-            name_widget = inner_box.get_first_child()
-            key_widget = name_widget.get_next_sibling()
-            val_widget = key_widget.get_next_sibling()
 
-            rule_name = self._get_val(name_widget).lower()
-            match_val = self._get_val(val_widget).lower()
+            name_val = self._get_val(inner_box.get_first_child()).lower()
+            desc_val = self._get_val(
+                inner_box.get_first_child().get_next_sibling()
+            ).lower()
+
+            match_key = (
+                inner_box.get_first_child().get_next_sibling().get_next_sibling()
+            )
+            match_val = self._get_val(match_key.get_next_sibling()).lower()
 
             is_visible = not search_text or (
-                search_text in rule_name or search_text in match_val
+                search_text in name_val
+                or search_text in desc_val
+                or search_text in match_val
             )
             row.set_visible(is_visible)
             row = row.get_next_sibling()
@@ -115,12 +124,17 @@ class RuleManager:
         )
         row_container.set_margin_top(8)
         row_container.set_margin_bottom(8)
+
         row = self.p.gtk.Box(spacing=10)
         row.add_css_class("rule-row")
 
-        name_entry = self.p.gtk.Entry(placeholder_text="Rule Name")
-        name_entry.set_width_chars(20)
+        name_entry = self.p.gtk.Entry(placeholder_text="Name")
+        name_entry.set_width_chars(15)
         name_entry.add_css_class("rule-name")
+
+        desc_entry = self.p.gtk.Entry(placeholder_text="Description...")
+        desc_entry.set_width_chars(40)
+        desc_entry.add_css_class("rule-description")
 
         match_key_drop = self.p.gtk.DropDown.new_from_strings(MATCH_KEYS)
         match_key_drop.add_css_class("rule-match-key")
@@ -139,7 +153,7 @@ class RuleManager:
         action_drop.add_css_class("rule-action")
 
         value_wrapper = self.p.gtk.Box(spacing=6)
-        value_wrapper.set_size_request(250, -1)
+        value_wrapper.set_size_request(200, -1)
         value_wrapper.add_css_class("rule-action-value-container")
 
         def update_match_value_widget(key, initial_val=None):
@@ -232,6 +246,7 @@ class RuleManager:
 
         if data:
             name_entry.set_text(data.get("name", ""))
+            desc_entry.set_text(data.get("description", ""))
             match_key_drop.set_selected(
                 MATCH_KEYS.index(data.get("match_key", "app-id"))
             )
@@ -252,6 +267,7 @@ class RuleManager:
         )
 
         row.append(name_entry)
+        row.append(desc_entry)
         row.append(match_key_drop)
         row.append(match_val_wrapper)
         row.append(event_drop)
@@ -262,13 +278,10 @@ class RuleManager:
         row_container.append(row)
         row_container.append(self.p.gtk.Separator())
 
-        # Newest rules at the top
         self.list_box.prepend(row_container)
 
     def save(self):
         rules = []
-        # Since the UI is prepended, we read from top to bottom
-        # but save in an order that maintains consistency
         child = self.list_box.get_first_child()
         while child:
             row = child.get_child().get_first_child()
@@ -281,18 +294,17 @@ class RuleManager:
             rules.append(
                 {
                     "name": self._get_val(ws[0]),
-                    "match_key": ws[1].get_selected_item().get_string(),
-                    "match_value": self._get_val(ws[2]),
-                    "event": ws[3].get_selected_item().get_string(),
-                    "timeout": int(ws[4].get_value()),
-                    "action": ws[5].get_selected_item().get_string(),
-                    "value": self._get_val(ws[6]),
+                    "description": self._get_val(ws[1]),
+                    "match_key": ws[2].get_selected_item().get_string(),
+                    "match_value": self._get_val(ws[3]),
+                    "event": ws[4].get_selected_item().get_string(),
+                    "timeout": int(ws[5].get_value()),
+                    "action": ws[6].get_selected_item().get_string(),
+                    "value": self._get_val(ws[7]),
                 }
             )
             child = child.get_next_sibling()
 
-        # We reverse to keep the "Top of UI" rules at the end of the settings list
-        # so refresh_ui (which prepends) puts them back at the top.
         self.p.set_plugin_setting("rules", rules[::-1])
         self._show_toast("Window Rules Saved Successfully")
 
@@ -317,8 +329,6 @@ class RuleManager:
         return ""
 
     def refresh_ui(self):
-        # Saved rules are stored chronologically.
-        # Iterating normally with prepend will naturally put the last rule at the top.
         for r in self.p.get_plugin_setting("rules", []):
             self.add_row(r)
 
