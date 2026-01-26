@@ -70,9 +70,17 @@
 .openwitheditor-listbox {
   background-color: var(--theme-bg-view-tertiary);
 }
+
+/* Added explicit row lines */
 .openwitheditor-listbox listboxrow {
   background-color: var(--theme-bg-view-tertiary);
+  border-bottom: 1px solid var(--theme-decoration-separator);
 }
+
+.openwitheditor-listbox listboxrow:last-child {
+  border-bottom: none;
+}
+
 .openwitheditor-listbox listboxrow:nth-child(even) {
   background-color: var(--theme-bg-alternating-row);
 }
