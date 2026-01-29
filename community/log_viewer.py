@@ -59,7 +59,7 @@ def get_plugin_class():
             """
             Initializes the panel button trigger.
             """
-            self.toggle_button = Gtk.Button(icon_name="utilities-log-viewer")
+            self.toggle_button = Gtk.Button(icon_name="org.gnome.Logs-symbolic")
             self.toggle_button.connect("clicked", self._on_toggle_clicked)
             self.main_widget = (self.toggle_button, "append")
 
