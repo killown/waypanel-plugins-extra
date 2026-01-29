@@ -107,12 +107,6 @@ separator {
   opacity: 0.5;
 }
 
-/* Responsive spacing for the value boxes */
-.rule-action-value-container:empty {
-  border: none;
-  background: transparent;
-}
-
 .rule-toast {
   background-color: var(--color-status-success);
   color: white;

@@ -97,8 +97,14 @@ class RuleEngine:
                 break
 
     def _act_send_to_workspace(self, v_id, val):
-        x, y = map(int, str(val).split(","))
-        self.p.ipc.send_view_to_workspace(v_id, x, y)
+        try:
+            # Expecting "x,y" format
+            coords = str(val).split(",")
+            if len(coords) == 2:
+                x, y = map(int, coords)
+                self.p.ipc.send_view_to_workspace(v_id, x, y)
+        except (ValueError, TypeError):
+            pass
 
     def _act_alpha(self, v_id, val):
         self.p.ipc.set_view_alpha(v_id, float(val))

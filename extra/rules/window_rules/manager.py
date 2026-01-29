@@ -10,6 +10,7 @@ from .template import (
     SLOTS,
     SLOT_MAP,
     REVERSE_SLOT_MAP,
+    MOUSE_BUTTONS,
     EVENT_HINTS,
     ACTION_HINTS,
 )
@@ -66,6 +67,7 @@ class RuleManager:
 
         save_btn = self.p.gtk.Button(label="Save")
         save_btn.add_css_class("suggested-action")
+        save_btn.set_tooltip_text("Save all rules to configuration")
         save_btn.connect("clicked", lambda _: self.save())
         header.pack_end(save_btn)
 
@@ -100,19 +102,15 @@ class RuleManager:
         search_text = entry.get_text().lower()
         row = self.list_box.get_first_child()
         while row:
-            # Layout: [Name, Desc, MatchKey, MatchVal, Event, Timeout, Action, ActionVal, Trash]
             inner_box = row.get_child().get_first_child()
-
             name_val = self._get_val(inner_box.get_first_child()).lower()
             desc_val = self._get_val(
                 inner_box.get_first_child().get_next_sibling()
             ).lower()
-
             match_key_widget = (
                 inner_box.get_first_child().get_next_sibling().get_next_sibling()
             )
-            match_val_widget = match_key_widget.get_next_sibling()
-            match_val = self._get_val(match_val_widget).lower()
+            match_val = self._get_val(match_key_widget.get_next_sibling()).lower()
 
             is_visible = not search_text or (
                 search_text in name_val
@@ -135,12 +133,22 @@ class RuleManager:
         name_entry = self.p.gtk.Entry(placeholder_text="Name")
         name_entry.set_width_chars(15)
         name_entry.add_css_class("rule-name")
+        name_entry.set_tooltip_text("A short internal name for this rule")
 
         desc_entry = self.p.gtk.Entry(placeholder_text="Description...")
         desc_entry.set_width_chars(40)
         desc_entry.add_css_class("rule-description")
+        desc_entry.set_tooltip_text("Explain what this rule does in detail")
 
-        match_key_drop = self.p.gtk.DropDown.new_from_strings(MATCH_KEYS)
+        MATCH_HINTS = {
+            "app-id": "Match based on the application ID (e.g., 'org.gnome.Nautilus')",
+            "title": "Match based on the window title text",
+            "output-name": "Match based on monitor name",
+            "type": "Match window type",
+            "role": "Match window role",
+            "parent": "Match window parent state",
+        }
+        match_key_drop = self._create_dropdown_with_hints(MATCH_KEYS, MATCH_HINTS)
         match_key_drop.add_css_class("rule-match-key")
 
         match_val_wrapper = self.p.gtk.Box(hexpand=True)
@@ -152,6 +160,7 @@ class RuleManager:
         timeout_adj = self.p.gtk.Adjustment.new(0, 0, 10000, 50, 500, 0)
         timeout_spin = self.p.gtk.SpinButton(adjustment=timeout_adj, numeric=True)
         timeout_spin.add_css_class("rule-timeout")
+        timeout_spin.set_tooltip_text("Wait (ms) before executing the action")
 
         action_drop = self._create_dropdown_with_hints(ACTION_LIST, ACTION_HINTS)
         action_drop.add_css_class("rule-action")
@@ -225,6 +234,22 @@ class RuleManager:
                     widget.set_selected(outputs.index(initial_val))
                 widget.add_css_class("rule-action-dropdown")
                 value_wrapper.append(widget)
+            elif action_name == "send_to_workspace":
+                ws_map = self.p.ipc.get_total_workspaces() or {}
+                sorted_keys = [str(k) for k in sorted(ws_map.keys())]
+                widget = self.p.gtk.DropDown.new_from_strings(sorted_keys)
+                if initial_val:
+                    try:
+                        target_coords = [int(v) for v in str(initial_val).split(",")]
+                        for k, coords in ws_map.items():
+                            if coords == target_coords:
+                                if str(k) in sorted_keys:
+                                    widget.set_selected(sorted_keys.index(str(k)))
+                                break
+                    except:
+                        pass
+                widget.add_css_class("rule-action-dropdown")
+                value_wrapper.append(widget)
             elif action_name == "alpha":
                 adj = self.p.gtk.Adjustment.new(1.0, 0.0, 1.0, 0.1, 0.1, 0.0)
                 widget = self.p.gtk.SpinButton(adjustment=adj, digits=1)
@@ -236,10 +261,15 @@ class RuleManager:
                 display_names = list(SLOT_MAP.keys())
                 widget = self.p.gtk.DropDown.new_from_strings(display_names)
                 if initial_val:
-                    # Internal 'slot_t' -> Display 'Top'
                     display_val = REVERSE_SLOT_MAP.get(initial_val, initial_val)
                     if display_val in display_names:
                         widget.set_selected(display_names.index(display_val))
+                widget.add_css_class("rule-action-dropdown")
+                value_wrapper.append(widget)
+            elif action_name == "click_button":
+                widget = self.p.gtk.DropDown.new_from_strings(MOUSE_BUTTONS)
+                if initial_val and initial_val in MOUSE_BUTTONS:
+                    widget.set_selected(MOUSE_BUTTONS.index(initial_val))
                 widget.add_css_class("rule-action-dropdown")
                 value_wrapper.append(widget)
             else:
@@ -276,6 +306,7 @@ class RuleManager:
         del_btn = self.p.gtk.Button(icon_name="user-trash-symbolic")
         del_btn.add_css_class("destructive-action")
         del_btn.add_css_class("rule-delete")
+        del_btn.set_tooltip_text("Delete this rule")
         del_btn.connect(
             "clicked", lambda _: self.list_box.remove(row_container.get_parent())
         )
@@ -297,22 +328,28 @@ class RuleManager:
     def save(self):
         rules = []
         child = self.list_box.get_first_child()
+        ws_map = self.p.ipc.get_total_workspaces() or {}
         while child:
             row = child.get_child().get_first_child()
-            ws = []
-            curr = row.get_first_child()
+            ws = [row.get_first_child()]
+            curr = ws[0].get_next_sibling()
             while curr:
                 ws.append(curr)
                 curr = curr.get_next_sibling()
 
-            # Handle SLOT display-to-internal translation during save
             action_str = ws[6].get_selected_item().get_string()
             raw_val = self._get_val(ws[7])
+            save_val = raw_val
             if action_str == "assign_slot":
-                # Display 'Top' -> Internal 'slot_t'
                 save_val = SLOT_MAP.get(raw_val, raw_val)
-            else:
-                save_val = raw_val
+            elif action_str == "send_to_workspace":
+                try:
+                    ws_num = int(raw_val)
+                    if ws_num in ws_map:
+                        coords = ws_map[ws_num]
+                        save_val = f"{coords[0]},{coords[1]}"
+                except:
+                    pass
 
             rules.append(
                 {

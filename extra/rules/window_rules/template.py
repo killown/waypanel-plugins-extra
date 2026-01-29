@@ -30,6 +30,17 @@ EVENT_LIST = [
     "view-sticky",
 ]
 
+MOUSE_BUTTONS = [
+    "BTN_LEFT",
+    "BTN_RIGHT",
+    "BTN_MIDDLE",
+    "BTN_SIDE",
+    "BTN_EXTRA",
+    "BTN_FORWARD",
+    "BTN_BACK",
+    "BTN_TASK",
+]
+
 ACTION_LIST = [
     "fullscreen",
     "center",
@@ -108,6 +119,14 @@ ACTION_HINTS = {
     "assign_slot": "Snaps view to a predefined grid slot.",
     "press_key": "Simulates a keyboard press.",
     "move_cursor": "Warps cursor to absolute screen coordinates.",
-    "click_button": "Simulates a mouse button click.",
+    "click_button": """Simulates a mouse button click.
+                    BTN_LEFT:     Left Mouse Button
+                    BTN_RIGHT:    Right Mouse Button
+                    BTN_MIDDLE:   Middle Mouse Button (Scroll wheel click)
+                    BTN_SIDE:     Side button (commonly "Back")
+                    BTN_EXTRA:    Extra button (commonly "Forward")
+                    BTN_FORWARD:  Additional forward button
+                    BTN_BACK:     Additional back button
+                    BTN_TASK:     Task switcher or macro button""",
     "set_focus": "Gives input focus to the view.",
 }
