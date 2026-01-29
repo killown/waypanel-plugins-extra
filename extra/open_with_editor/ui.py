@@ -28,46 +28,106 @@ def get_ui_factory():
                 visible_handler=self.on_open,
             )
 
-            box = self.p.gtk.Box.new(self.p.gtk.Orientation.VERTICAL, 0)
-            box.add_css_class("openwitheditor-main-box")
+            # Main layout: Content on left, Sidebar on right
+            main_layout = self.p.gtk.Box.new(self.p.gtk.Orientation.HORIZONTAL, 0)
+            main_layout.add_css_class("openwitheditor-main-box")
+            main_layout.set_size_request(550, 500)
+
+            # --- Left Side: Content ---
+            content_area = self.p.gtk.Box.new(self.p.gtk.Orientation.VERTICAL, 0)
+            content_area.set_hexpand(True)
 
             self.p.stack = self.p.gtk.Stack.new()
             self.p.stack.add_css_class("openwitheditor-stack")
+            self.p.stack.set_transition_type(self.p.gtk.StackTransitionType.CROSSFADE)
             self.p.stack.connect("notify::visible-child-name", self.on_open)
+            content_area.append(self.p.stack)
+
+            # --- Right Side: Vertical Sidebar ---
+            sidebar = self.p.gtk.Box.new(self.p.gtk.Orientation.VERTICAL, 0)
+            sidebar.add_css_class("openwitheditor-sidebar")
+            sidebar.set_size_request(40, -1)  # Tight vertical bar
 
             switcher = self.p.gtk.StackSwitcher.new()
+            switcher.set_orientation(self.p.gtk.Orientation.VERTICAL)
             switcher.set_stack(self.p.stack)
-            switcher.add_css_class("openwitheditor-stack-switcher")
+            switcher.set_hexpand(False)
+            switcher.set_halign(self.p.gtk.Align.CENTER)
+            switcher.set_vexpand(False)
+            switcher.add_css_class("openwitheditor-switcher")
 
-            box.append(switcher)
-            box.append(self.p.stack)
+            sidebar_actions = self.p.gtk.Box.new(self.p.gtk.Orientation.VERTICAL, 5)
+            sidebar_actions.set_margin_bottom(10)
+            sidebar_actions.set_halign(self.p.gtk.Align.CENTER)
 
-            # Context Menu initialized as Popover
+            add_btn = self.p.gtk.Button(icon_name="list-add-symbolic")
+            add_btn.set_tooltip_text("Add Directory")
+            add_btn.add_css_class("circular")
+            add_btn.connect("clicked", self._on_add_directory_clicked)
+            self.p.gtk_helper.add_cursor_effect(add_btn)
+
+            sidebar_actions.append(add_btn)
+            sidebar.append(switcher)
+            sidebar.append(sidebar_actions)
+
+            main_layout.append(content_area)
+            main_layout.append(sidebar)
+
             self.ctx_menu = self.p.gtk.Popover()
             self.ctx_menu.add_css_class("openwitheditor-context-menu")
             self.ctx_menu.set_autohide(True)
+
+            plugin_id = "org.waypanel.plugin.open_with_editor"
 
             for name, path in self.p.config_maps.items():
                 page = self.p.gtk.Box.new(self.p.gtk.Orientation.VERTICAL, 0)
                 page.add_css_class("openwitheditor-page-box")
 
+                # --- Path Management Row ---
+                mgmt_row = self.p.gtk.Box(orientation=self.p.gtk.Orientation.HORIZONTAL)
+                mgmt_row.set_margin_start(10)
+                mgmt_row.set_margin_end(10)
+                mgmt_row.set_margin_top(8)
+
+                path_lbl = self.p.gtk.Label(label=f"Source: {path}")
+                path_lbl.set_hexpand(True)
+                path_lbl.set_halign(self.p.gtk.Align.START)
+                path_lbl.add_css_class("caption")
+                path_lbl.set_ellipsize(self.p.pango.EllipsizeMode.END)
+
+                del_btn = self.p.gtk.Button(icon_name="edit-delete-symbolic")
+                del_btn.add_css_class("destructive-action")
+                del_btn.set_has_frame(False)
+
+                # Targeting the root configuration structure
+                def on_del_clicked(_, n=name):
+                    current_dirs = self.p.get_root_setting(
+                        [plugin_id, "directories"], {}
+                    )
+                    if n in current_dirs:
+                        del current_dirs[n]
+                        self.p.config_handler.update_config(
+                            [plugin_id, "directories"], current_dirs
+                        )
+                        self.p.config_handler.save_config()
+
+                del_btn.connect("clicked", on_del_clicked)
+                mgmt_row.append(path_lbl)
+                mgmt_row.append(del_btn)
+                page.append(mgmt_row)
+
+                # --- Search and List ---
                 search_entry = self.p.gtk.SearchEntry.new()
                 search_entry.add_css_class("openwitheditor-search-entry")
                 search_entry.connect("search-changed", self.on_search_changed)
                 search_entry.connect("activate", self.on_search_activated)
 
-                key_controller = self.p.gtk.EventControllerKey.new()
-                key_controller.connect("key-pressed", self.on_key_pressed)
-                search_entry.add_controller(key_controller)
-
                 scrolled = self.p.gtk.ScrolledWindow.new()
-                scrolled.add_css_class("openwitheditor-scrolled-window")
                 scrolled.set_policy(
                     self.p.gtk.PolicyType.NEVER, self.p.gtk.PolicyType.AUTOMATIC
                 )
-                scrolled.set_propagate_natural_height(True)
-                scrolled.set_min_content_height(350)
-                scrolled.set_max_content_height(600)
+                scrolled.set_propagate_natural_height(False)
+                scrolled.set_vexpand(True)
 
                 listbox = self.p.gtk.ListBox.new()
                 listbox.add_css_class("openwitheditor-listbox")
@@ -81,7 +141,57 @@ def get_ui_factory():
                 self.p.listbox_widgets[name] = listbox
                 self.p.searchbar_widgets[name] = search_entry
 
-            self.p.popover_openwitheditor.set_child(box)
+            self.p.popover_openwitheditor.set_child(main_layout)
+
+        def _on_add_directory_clicked(self, _):
+            from gi.repository import Adw
+
+            dialog = Adw.MessageDialog(
+                heading="Add Directory", body="Assign a name and path to track."
+            )
+
+            entry_box = self.p.gtk.Box(
+                orientation=self.p.gtk.Orientation.VERTICAL, spacing=10
+            )
+            name_entry = self.p.gtk.Entry(placeholder_text="Name (e.g. MyProject)")
+            path_entry = self.p.gtk.Entry(
+                placeholder_text="Absolute Path (e.g. ~/Git/waypanel)"
+            )
+
+            entry_box.append(name_entry)
+            entry_box.append(path_entry)
+            dialog.set_extra_child(entry_box)
+
+            dialog.add_response("cancel", "Cancel")
+            dialog.add_response("add", "Add")
+            dialog.set_response_appearance("add", Adw.ResponseAppearance.SUGGESTED)
+
+            def on_response(d, response):
+                if response == "add":
+                    name, path = (
+                        name_entry.get_text().strip(),
+                        path_entry.get_text().strip(),
+                    )
+                    if name and path:
+                        current_dirs = self.p.get_root_setting(
+                            ["org.waypanel.plugin.open_with_editor", "directories"], {}
+                        )
+                        current_dirs[name] = path
+                        self.p.config_handler.update_config(
+                            ["org.waypanel.plugin.open_with_editor", "directories"],
+                            current_dirs,
+                        )
+                        self.p.config_handler.save_config()
+
+                        self.p.notify_send(
+                            "Directory Added",
+                            "Configuration updated. Please reload the plugin or panel to index the new directory.",
+                            icon="folder-added-symbolic",
+                        )
+                d.destroy()
+
+            dialog.connect("response", on_response)
+            dialog.present()
 
         def on_open(self, *_):
             self.p.layer_shell.set_keyboard_mode(

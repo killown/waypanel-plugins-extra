@@ -1,14 +1,9 @@
+/* Open With Editor - High-End 3D Neumorphic Theme */
+
 .openwitheditor-menu-button {
-  -gtk-icon-size: 25px;
-  padding-top: 9px;
-  padding-bottom: 2px;
-}
-.openwitheditor-menu-button:hover {
-  background-color: var(--color-bg-button-hover);
-}
-.openwitheditor-menu-button:active,
-.openwitheditor-menu-button:checked {
-  background-color: var(--color-bg-button-active);
+  -gtk-icon-size: 28px;
+  padding: 6px;
+  border-radius: var(--radius-s);
 }
 
 .openwitheditor-popover {
@@ -16,92 +11,133 @@
   background-color: var(--color-bg-popover-content);
   box-shadow: var(--shadow-window-float);
   border: 1px solid var(--theme-decoration-separator);
-  padding: 0;
 }
 
 .openwitheditor-main-box {
-  padding: 0;
-  min-width: 600px;
+  background-color: var(--color-bg-popover-content);
+  border-radius: var(--radius-l);
 }
 
-.openwitheditor-stack-switcher {
+/* --- Sidebar: Inset Depth --- */
+.openwitheditor-sidebar {
   background-color: var(--color-bg-list-header);
-  border-bottom: 1px solid var(--theme-decoration-separator);
-  padding: 5px 0;
-}
-.openwitheditor-stack-switcher button {
-  font-weight: var(--font-weight-medium);
-  color: var(--theme-fg-label-secondary);
-}
-.openwitheditor-stack-switcher button:checked {
-  color: var(--theme-fg-label-primary);
+  border-left: 1px solid var(--theme-decoration-separator);
+  padding: 15px 8px;
+  /* Deep inset creates a structural "channel" for buttons */
+  box-shadow: inset 8px 0 15px -10px rgba(0, 0, 0, 0.5);
 }
 
+.openwitheditor-switcher {
+  background: transparent;
+}
+
+/* 3D Extruded Tab Buttons */
+.openwitheditor-switcher button {
+  -gtk-icon-size: 28px;
+  padding: 10px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-m);
+  color: var(--theme-fg-label-secondary);
+  background-color: var(--color-bg-popover-content);
+  border: 1px solid var(--theme-decoration-separator);
+  /* Outset Shadow for 3D depth */
+  box-shadow:
+    0 4px 0 var(--theme-decoration-separator),
+    0 6px 10px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.openwitheditor-switcher button:hover {
+  color: var(--theme-fg-label-primary);
+  background-color: var(--color-bg-button-hover);
+  transform: translateY(-2px);
+  box-shadow:
+    0 6px 0 var(--theme-decoration-separator),
+    0 10px 15px rgba(0, 0, 0, 0.4);
+}
+
+.openwitheditor-switcher button:checked {
+  background-color: var(--theme-bg-selected-primary);
+  color: #ffffff;
+  border-color: var(--theme-bg-selected-primary);
+  /* Pressed look: No shadow + translate down */
+  transform: translateY(4px);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+
+/* Glowing 3D Add Button */
+.openwitheditor-add-btn {
+  -gtk-icon-size: 28px;
+  margin-top: 25px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  background-color: var(--color-bg-popover-content);
+  border: 1px solid var(--theme-decoration-separator);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  color: var(--theme-fg-label-secondary);
+  transition: all 0.2s ease;
+}
+
+.openwitheditor-add-btn:hover {
+  transform: scale(1.1);
+  color: var(--theme-fg-success);
+  border-color: var(--theme-fg-success);
+  box-shadow: 0 0 15px var(--theme-fg-success);
+}
+
+/* --- Content Area --- */
 .openwitheditor-stack {
   background-color: var(--theme-bg-view-tertiary);
 }
 
-.openwitheditor-page-box {
-  padding: 0;
-}
-
+/* Search Entry: Lifted 3D Input */
 .openwitheditor-search-entry {
-  margin: 10px 10px 5px 10px;
-  border-radius: var(--radius-s);
+  margin: 15px 15px 20px 15px; /* Increased bottom margin to fix "glued" look */
+  padding: 8px;
+  border-radius: var(--radius-m);
   background-color: var(--color-bg-entry-base);
-  color: var(--theme-fg-label-primary);
-  border: 1px solid var(--color-border-entry-base);
-}
-.openwitheditor-search-entry:focus {
-  background-color: var(--color-bg-entry-focus);
-  border-color: var(--color-border-entry-focus);
-  box-shadow: none;
+  border: 1px solid var(--theme-decoration-separator);
+  /* Inset shadow for depth */
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
+/* File List Window: Recessed "Well" Effect */
 .openwitheditor-scrolled-window {
-  min-width: 600px;
-  min-height: 400px;
-  margin: 0 10px 10px 10px;
-  border-radius: var(--radius-s);
+  margin: 0 15px 15px 15px;
+  border-radius: var(--radius-m);
   border: 1px solid var(--theme-decoration-separator);
   background-color: var(--theme-bg-view-tertiary);
+  /* Deep inner shadow to make list look recessed */
+  box-shadow: inset 0 3px 10px rgba(0, 0, 0, 0.6);
 }
 
-.openwitheditor-listbox {
-  background-color: var(--theme-bg-view-tertiary);
-}
-
-/* Added explicit row lines */
 .openwitheditor-listbox listboxrow {
-  background-color: var(--theme-bg-view-tertiary);
-  border-bottom: 1px solid var(--theme-decoration-separator);
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
-.openwitheditor-listbox listboxrow:last-child {
-  border-bottom: none;
-}
-
-.openwitheditor-listbox listboxrow:nth-child(even) {
-  background-color: var(--theme-bg-alternating-row);
-}
 .openwitheditor-listbox listboxrow:selected {
   background-color: var(--theme-bg-selected-secondary);
+  /* Highlight selected item */
+  box-shadow: inset 4px 0 0 var(--theme-bg-selected-primary);
 }
 
-.openwitheditor-row-hbox {
-  padding: 5px 10px;
-}
-.openwitheditor-row-hbox:hover {
-  background-color: var(--theme-bg-selected-secondary);
-}
-
+/* Labels and Icons */
 .openwitheditor-label-from-popover {
-  color: var(--theme-fg-label-primary);
   font-size: 14px;
+  font-weight: 500;
+  margin-left: 12px;
 }
 
 .openwitheditor-icon-from-popover {
-  color: var(--theme-fg-label-secondary);
-  min-width: 24px;
-  padding-right: 5px;
+  -gtk-icon-size: 28px; /* Applied to list items as requested */
+  opacity: 0.9;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.3));
+}
+
+.destructive-action:hover {
+  background-color: var(--theme-bg-error);
+  color: #ffffff;
+  box-shadow: 0 0 10px var(--theme-bg-error);
 }
