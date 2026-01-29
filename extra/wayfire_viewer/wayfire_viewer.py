@@ -34,18 +34,17 @@ def get_plugin_class():
             self.button = self.gtk.Button(icon_name="preferences-system-symbolic")
             self.button.connect("clicked", self.on_click)
             self.add_cursor_effect(self.button)
-            self.plugins["app_launcher"].system_button_config["Wayfire Settings"] = (
-                {
-                    "icons": self.get_plugin_setting(
-                        ["buttons", "icons", "settings"],
-                        [
-                            "settings-configure-symbolic",
-                            "systemsettings-symbolic",
-                            "settings",
-                        ],
-                    ),
-                },
-            )
+            self.plugins["app_launcher"].system_button_config["Wayfire Settings"] = {
+                "icons": self.get_plugin_setting(
+                    ["buttons", "icons", "settings"],
+                    [
+                        "settings-configure-symbolic",
+                        "systemsettings-symbolic",
+                        "settings",
+                    ],
+                ),
+                "callback": self.on_click,
+            }
 
         def on_click(self, _):
             if self.window and self.window.get_visible():
@@ -92,89 +91,83 @@ def get_plugin_class():
             self.window.present()
 
         def _on_msg(self, _, msg):
+            """
+            Handles incoming JSON messages from the WebKit view and synchronizes
+            changes between the Live IPC, internal config, and the physical TOML file.
+            """
             try:
+                # WebKit messages are typically strings; parse into dict
                 data = json.loads(msg.to_json(0))
                 msg_type = data.get("msg_type")
 
-                if msg_type == "pick_file":
-                    self._open_file_chooser(data["target_id"])
-                    return
-
-                if msg_type == "manual_update":
-                    section, key, val = data["section"], data["key"], data["value"]
-                    val = self._parse_val(val)
-                    self._manual_save(section, key, val)
-                    return
-
-                if msg_type == "manual_delete":
-                    section, key = data["section"], data["key"]
-                    self._manual_delete(section, key)
-                    return
-
-                if msg_type == "section_reset":
-                    section = data.get("plugin")
-                    updates = data.get("updates", {})
-                    for path, val in updates.items():
-                        parsed = self._parse_val(val)
-                        self.ipc.set_option_values({path: parsed})
-                    self.panel.config_handler.save_config()
-                    return
-
+                # 1. Handle Plugin Toggling
                 if msg_type == "toggle_plugin":
                     plist_reply = self.ipc.get_option_value("core/plugins")
                     if not plist_reply:
                         return
+
                     plist_raw = plist_reply.get("value", "")
-                    plist = (
-                        plist_raw.split()
-                        if isinstance(plist_raw, str)
-                        else list(plist_raw)
-                    )
+                    plist = plist_raw.split()
                     name, state = data["plugin"], data["state"]
 
                     if state and name not in plist:
                         plist.append(name)
                     elif not state and name in plist:
-                        plist.remove(name)
+                        try:
+                            plist.remove(name)
+                        except ValueError:
+                            pass
 
                     new_val = " ".join(plist)
+
+                    # Sync Live, Disk, and Internal Cache
                     self.ipc.set_option_values({"core/plugins": new_val})
-                    self.panel.config_handler.save_config()
+                    self._manual_save("core", "plugins", new_val)
+                    self.config_handler.update_config(["core", "plugins"], new_val)
                     return
 
-                path, val, vtype = data["path"], data["value"], data["type"]
-                parsed_val = self._parse_val(val, vtype)
-                self.ipc.set_option_values({path: parsed_val})
-                self.panel.config_handler.save_config()
+                # 2. Handle Manual Option Updates (usually for custom keys)
+                if msg_type == "manual_update":
+                    section, key, val = data["section"], data["key"], data["value"]
+                    parsed_val = self._parse_val(val)
+
+                    self._manual_save(section, key, parsed_val)
+                    self.ipc.set_option_values({f"{section}/{key}": parsed_val})
+                    self.config_handler.update_config([section, key], parsed_val)
+                    return
+
+                # 3. Handle Manual Key Deletion
+                if msg_type == "manual_delete":
+                    section, key = data["section"], data["key"]
+                    self._manual_delete(section, key)
+                    self.config_handler.remove_root_setting([section, key])
+                    return
+
+                # 4. Handle Standard Widget Updates (Sliders, Text Inputs, Enums)
+                # These usually come with a 'path' (e.g., 'command/width')
+                if "path" in data:
+                    path, val, vtype = data["path"], data["value"], data["type"]
+                    parsed_val = self._parse_val(val, vtype)
+
+                    # Update the live compositor instance
+                    self.ipc.set_option_values({path: parsed_val})
+
+                    # Update Waypanel's internal settings cache
+                    self.config_handler.update_config(path.split("/"), parsed_val)
+
+                    # FIXED: Save to the physical TOML file for persistence
+                    # Split 'section/key' to extract location for _manual_save
+                    path_parts = path.split("/")
+                    if len(path_parts) == 2:
+                        section, key = path_parts
+                        self._manual_save(section, key, parsed_val)
+
+                    self.logger.debug(
+                        f"Wayfire Sync: Persistent update for {path} -> {parsed_val}"
+                    )
 
             except Exception as e:
-                self.logger.error(f"Sync error: {e}")
-
-        def _open_file_chooser(self, target_id):
-            from gi.repository import Gtk
-
-            dialog = Gtk.FileChooserNative(
-                title="Select File",
-                transient_for=self.window,
-                action=Gtk.FileChooserAction.OPEN,
-            )
-
-            def on_response(dialog, response_id):
-                if response_id == Gtk.ResponseType.ACCEPT:
-                    file_path = dialog.get_file().get_path()
-                    # Execute JS to update the specific textarea/input
-                    self.view.evaluate_javascript(
-                        f"updateFilePath('{target_id}', '{file_path}')",
-                        -1,
-                        None,
-                        None,
-                        None,
-                        None,
-                    )
-                dialog.destroy()
-
-            dialog.connect("response", on_response)
-            dialog.show()
+                self.logger.error(f"Wayfire Sync Error: {e}")
 
         def _parse_val(self, val, vtype=None):
             if vtype == "bool" or str(val).lower() in ["true", "false"]:
