@@ -154,7 +154,11 @@ container = "personal"
             self.main_widget = (self.menubutton_bookmarks, "append")
             icon_name = self.icon_exist(
                 "firefox-symbolic",
-                ["chromium-browser-symbolic", "user-bookmarks-symbolic"],
+                [
+                    "chromium-browser-symbolic",
+                    "user-bookmarks-symbolic",
+                    "bookmark-new-symbolic",
+                ],
             )
             self.menubutton_bookmarks.set_icon_name(icon_name)
             self.menubutton_bookmarks.add_css_class("bookmarks-menu-button")
@@ -833,20 +837,5 @@ container = "personal"
             if not self.icons_loaded:
                 self.popover_bookmarks = None
             return
-
-        def code_explanation(self):
-            """
-            This plugin seamlessly integrates web bookmarks into the panel by
-            combining file I/O, network requests, image processing, and GTK UI
-            components. The image fetching logic has been updated to:
-            1. **Scrape for Largest Favicon:** It scrapes the HTML of the bookmark's URL for `<link>` tags with `rel` values like `icon`, `apple-touch-icon`, etc.
-            2. **Prioritize by Size:** It parses the `sizes` attribute (e.g., "180x180") to determine the largest available icon and downloads that one, falling back to a standard `/favicon.ico` if none are explicitly linked.
-            3. **Subdomain-Specific Icons:** The filename generation uses the **full hostname** to ensure different subdomains use different cached icons.
-            4. **Explicit Icon Priority:** The configuration's `icon = "..."` field explicitly forces that icon URL to be downloaded if present.
-            5. **Configuration-Driven Execution:** The browser to be launched (`self.browser_executable`) and the specific arguments (`self.browser_args_format`) are now user-configurable settings.
-            6. **Content Caching:** The fully constructed GTK widget tree is still cached in `self.final_popover_content` for instant re-use after the first successful load, maintaining high performance.
-            7. **Right-Click to Remove:** Bookmarks can be removed via a right-click context menu. This action robustly cleans up the entry from the TOML configuration, removes the associated icon/thumbnail from disk, and clears the cache entry before refreshing the UI.
-            """
-            return self.code_explanation.__doc__
 
     return PopoverBookmarks
