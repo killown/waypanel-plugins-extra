@@ -2,7 +2,7 @@ def get_plugin_metadata(panel):
     return {
         "id": "org.waypanel.plugin.player_calendar",
         "name": "Player Calendar Integration",
-        "version": "2.1.8",
+        "version": "2.2.0",
         "description": "Integrates media player metadata into the Calendar plugin's popover.",
         "author": "Architect Prime",
         "container": "background",
@@ -13,6 +13,7 @@ def get_plugin_metadata(panel):
 
 def get_plugin_class():
     import gi
+    import os
 
     gi.require_version("Gtk", "4.0")
     from gi.repository import Gtk, GLib, GdkPixbuf, Gio
@@ -31,8 +32,9 @@ def get_plugin_class():
 
         def _setup_ui(self):
             self.add_css_class("player-row")
-            self.set_margin_bottom(8)
+            self.set_margin_bottom(12)
 
+            # Album Art with fixed size constraints
             self.art_image = Gtk.Image()
             self.art_image.set_pixel_size(72)
             self.art_image.set_size_request(72, 72)
@@ -43,12 +45,15 @@ def get_plugin_class():
             right_vbox.set_valign(Gtk.Align.CENTER)
             right_vbox.set_hexpand(True)
 
+            # Title with character limit and ellipsize
             self.title_label = Gtk.Label(label="Unknown Title")
             self.title_label.set_halign(Gtk.Align.START)
-            self.title_label.set_ellipsize(3)
+            self.title_label.set_max_width_chars(25)
+            self.title_label.add_css_class("player-title")
 
             self.artist_label = Gtk.Label(label="Unknown Artist")
             self.artist_label.set_halign(Gtk.Align.START)
+            self.artist_label.set_max_width_chars(30)
             self.artist_label.add_css_class("caption")
 
             controls_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
@@ -79,10 +84,14 @@ def get_plugin_class():
             return btn
 
         def update_ui(self, data):
-            self.title_label.set_text(data.get("title", "Unknown"))
+            # Enforce hard text length limits
+            title = data.get("title", "Unknown")
+            if len(title) > 50:
+                title = title[:47] + "..."
+
+            self.title_label.set_text(title)
             self.artist_label.set_text(data.get("artist", "Unknown"))
 
-            # Update Play/Pause Icon
             icon = (
                 "media-playback-pause-symbolic"
                 if data.get("status") == "Playing"
@@ -90,29 +99,41 @@ def get_plugin_class():
             )
             self.btn_play.set_icon_name(icon)
 
-            # Update Art Image
             art_url = data.get("art_url")
             if art_url and art_url != self.last_art_url:
                 self.last_art_url = art_url
-                self._load_art(art_url)
+                self._load_art_async(art_url)
             elif not art_url:
                 self.art_image.set_from_icon_name("audio-x-generic-symbolic")
 
             self.btn_next.set_sensitive(data.get("can_next", True))
             self.btn_prev.set_sensitive(data.get("can_prev", True))
 
-        def _load_art(self, url):
-            if url.startswith("file://"):
-                url = url[7:]
+        def _load_art_async(self, url):
+            """Loads art asynchronously to prevent UI hangs with remote/sandboxed URIs."""
+            if not url:
+                return
+
+            def _on_load_finished(source, result):
+                try:
+                    stream = source.read_finish(result)
+                    pixbuf = GdkPixbuf.Pixbuf.new_from_stream_at_scale(
+                        stream, 72, 72, True, None
+                    )
+                    self.plugin.schedule_in_gtk_thread(
+                        lambda: self.art_image.set_from_pixbuf(pixbuf)
+                    )
+                except Exception:
+                    self.plugin.schedule_in_gtk_thread(
+                        lambda: self.art_image.set_from_icon_name(
+                            "audio-x-generic-symbolic"
+                        )
+                    )
 
             try:
-                file = Gio.File.new_for_path(url)
-                if not file.query_exists():
-                    self.art_image.set_from_icon_name("audio-x-generic-symbolic")
-                    return
-
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(url, 72, 72, True)
-                self.art_image.set_from_pixbuf(pixbuf)
+                # Handle file:// and https:// via Gio
+                file = Gio.File.new_for_uri(url)
+                file.read_async(GLib.PRIORITY_DEFAULT, None, _on_load_finished)
             except Exception:
                 self.art_image.set_from_icon_name("audio-x-generic-symbolic")
 
@@ -125,6 +146,7 @@ def get_plugin_class():
             )
             self.main_container.add_css_class("players-container")
             self.main_container.set_visible(False)
+
             GLib.timeout_add(1000, self._integrate_with_retry)
             self.run_in_async_task(self._init_local_dbus_and_monitor())
 
@@ -141,9 +163,11 @@ def get_plugin_class():
                 try:
                     players = await self.local_dbus.get_active_mpris_players()
                     valid_ids = set()
+
                     for p_id in players:
                         meta = await self.local_dbus.get_media_metadata(p_id)
-                        if meta:
+                        # Filter out empty metadata ghosts (Edge instances)
+                        if meta and (meta.get("title") or meta.get("status")):
                             valid_ids.add(p_id)
                             self.schedule_in_gtk_thread(self._sync_row, p_id, meta)
 
@@ -175,6 +199,7 @@ def get_plugin_class():
                 return True
             grid = cal.popover_calendar.get_child()
             if isinstance(grid, Gtk.Grid) and self.main_container.get_parent() is None:
+                # Attach to bottom of calendar grid
                 grid.attach(self.main_container, 0, 3, 3, 1)
                 return False
             return True
