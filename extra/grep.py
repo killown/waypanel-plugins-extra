@@ -44,6 +44,7 @@ def get_plugin_class():
 
             self.menu_button = self.gtk.Button()
             self.menu_button.set_icon_name("system-search-symbolic")
+            self.gtk_helper.add_cursor_effect(self.menu_button)
             self.popover = None
 
             self.programming_extensions = {
