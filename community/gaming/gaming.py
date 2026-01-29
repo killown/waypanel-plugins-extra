@@ -72,6 +72,7 @@ def get_plugin_class():
             """Registers the main widget for the panel."""
             self.plugins["css_generator"].install_css("gaming.css")
             self.main_button = self.gtk.Button.new_from_icon_name("input-gaming")
+            self.gtk_helper.add_cursor_effect(self.main_button)
             self.main_button.connect("clicked", self._on_toggle_launcher)
             self._init_ui()
             self.main_widget = (self.main_button, "append")
